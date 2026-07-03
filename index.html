@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Album 3D Viewer — 2026-06-21</title>
+<style>
+  :root{ --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --txt:#e7e9ee; --sub:#9aa3b2; --accent:#378ADD; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:"Segoe UI",system-ui,sans-serif;overflow:hidden}
+  #c{position:fixed;inset:0;display:block}
+  .ui{position:fixed;background:rgba(24,27,34,.92);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(6px)}
+  #controls{top:12px;left:12px;padding:12px 14px;width:252px;max-height:calc(100vh - 24px);overflow:auto}
+  #controls h1{font-size:14px;font-weight:600;margin:0 0 2px}
+  #controls .sub{font-size:11px;color:var(--sub);margin-bottom:10px}
+  .row{margin:9px 0}
+  .row label{font-size:11px;color:var(--sub);display:block;margin-bottom:4px}
+  .seg{display:flex;gap:4px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:52px;font-size:11px;padding:5px 6px;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:6px;cursor:pointer}
+  .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  input[type=range]{width:100%}
+  .chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt);cursor:pointer}
+  #hangctl{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px;display:none}
+  #hangctl .ht{font-size:11px;color:var(--accent);margin-bottom:4px}
+  #panel{top:12px;right:12px;width:300px;max-height:calc(100vh - 24px);overflow:auto;padding:0;display:none}
+  #panel .ph{width:100%;display:block;background:#000;border-radius:10px 10px 0 0}
+  #panel .body{padding:12px 14px}
+  #panel .fn{font-size:13px;font-weight:600;word-break:break-all;margin-bottom:8px}
+  #panel .note{font-size:13px;line-height:1.5;white-space:pre-wrap;margin:8px 0 10px;color:#f2d98a}
+  #panel table{width:100%;font-size:12px;border-collapse:collapse}
+  #panel td{padding:3px 0;vertical-align:top}
+  #panel td.k{color:var(--sub);width:64px}
+  .src{display:inline-block;font-size:10px;padding:1px 6px;border-radius:5px;margin-left:6px}
+  .src.exif{background:#143b2a;color:#5dcaa5}
+  .src.manual{background:#3b2a14;color:#efb05d}
+  #panel .close{position:absolute;top:6px;right:8px;background:rgba(0,0,0,.5);border:none;color:#fff;font-size:16px;border-radius:6px;cursor:pointer;width:26px;height:26px}
+  #legend{bottom:12px;left:12px;padding:10px 12px;font-size:11px;color:var(--sub);max-width:260px}
+  #legend .bar{height:8px;border-radius:4px;margin:5px 0 3px}
+  #hint{bottom:12px;right:12px;padding:8px 12px;font-size:11px;color:var(--sub)}
+  #count{color:var(--accent);font-weight:600}
+  #stat{font-size:11px;color:var(--sub);margin-top:4px;line-height:1.5}
+  #hangctl{display:none!important}
+  .row:has(#path), .row:has(#ground){display:none!important}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="controls" class="ui">
+  <h1>Album 3D Viewer</h1>
+  <div class="sub">2026-06-21 ・ <span id="count">0</span> 枚</div>
+  <div class="row"><input id="search" type="number" min="1" placeholder="番号で検索（例: 2）→ 他をグレーアウト" style="width:100%;padding:6px 8px;border:1px solid var(--line);background:#0f1115;color:var(--txt);border-radius:6px;font-size:12px"></div>
+  <div class="row"><label>色</label><div class="seg" id="seg-color">
+    <button data-v="id" class="on">識別</button>
+    <button data-v="time">時間</button>
+    <button data-v="dir">方位</button>
+    <button data-v="pitch">仰角</button>
+  </div></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="path" checked> 撮影順の軌跡を表示</label></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="ground" checked> 床グリッド/方位を表示</label></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="numbers" checked> 通し番号を表示</label></div>
+
+  <div id="hangctl">
+    <div class="ht">トラス（固定）・実寸</div>
+    <div class="sub" style="font-size:10px;margin:2px 0 6px">6×2マス＝7500×2700mm ・ 1マス1350×1250mm ・ 天井4000mm ・ 写真90×120mm（すべて固定）</div>
+    <div class="row"><label class="chk"><input type="checkbox" id="trussShow" checked> トラスのマス目を表示</label></div>
+    <div class="ht" style="margin-top:6px">写真を吊る範囲（トラス内）</div>
+    <div class="row"><label>長辺方向 <span id="rangeL-v">100</span>% ＝ <span id="rangeLmm-v">7500</span>mm</label><input type="range" id="rangeL" min="20" max="100" step="5" value="100"></div>
+    <div class="row"><label>短辺方向 <span id="rangeS-v">100</span>% ＝ <span id="rangeSmm-v">2700</span>mm</label><input type="range" id="rangeS" min="20" max="100" step="5" value="100"></div>
+    <div class="sub" style="font-size:10px;margin:2px 0 6px">分散=35 ・ 紐間隔=270mm（固定）</div>
+    <div class="ht" style="margin-top:6px">テグス（全て2本・紐間に分散）</div>
+    <div class="row"><label>長辺結びにする傾き <span id="tegThresh-v">12</span>°超（以下は短辺結び）</label><input type="range" id="tegThresh" min="0" max="45" step="1" value="12"></div>
+    <div class="row"><label>結び代 / 本 <span id="tegSlack-v">0</span> cm</label><input type="range" id="tegSlack" min="0" max="30" step="1" value="0"></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="strings" checked> テグスを表示</label></div>
+    <div class="ht" style="margin-top:6px">紐（テグスを掛ける線）・間隔270mm固定</div>
+    <div class="row"><label>紐の向き</label><div class="seg" id="seg-cordDir">
+      <button data-v="auto" class="on">自動(長辺)</button><button data-v="x">横W</button><button data-v="z">縦H</button></div></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="cordShow" checked> 紐・接点を表示</label></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="spacingShow" checked> テグス間隔(mm)を3D表示</label></div>
+    <div id="cordstat" style="font-size:11px;color:var(--sub);margin-top:2px;line-height:1.5"></div>
+    <div class="row"><button id="csv" style="width:100%;padding:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:6px;cursor:pointer">テグス＋紐の一覧をCSV出力</button></div>
+    <div class="row"><button id="plansvg" style="width:100%;padding:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:6px;cursor:pointer">平面図をSVGで書き出し</button></div>
+    <div id="stat"></div>
+  </div>
+
+  <div class="row"><button style="width:100%;padding:6px;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:6px;cursor:pointer" id="reset">視点をリセット</button></div>
+</div>
+
+<div id="panel" class="ui">
+  <button class="close" id="pclose">×</button>
+  <img class="ph" id="pimg" alt="">
+  <div class="body">
+    <div class="fn" id="pfn"></div>
+    <div class="note" id="pnote"></div>
+    <table><tbody id="pmeta"></tbody></table>
+  </div>
+</div>
+
+<div id="legend" class="ui">
+  <div id="leg-title">時間（撮影順）</div>
+  <div class="bar" id="leg-bar"></div>
+  <div id="leg-range" style="display:flex;justify-content:space-between"><span id="leg-a"></span><span id="leg-b"></span></div>
+</div>
+<div id="hint" class="ui">ドラッグ=回転 ・ ホイール=ズーム ・ 右ドラッグ=平行移動 ・ 写真/接点をクリックで選択（他はグレー）・ Escor空クリックで解除</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const DATA = {"n":117,"p":[{"f":"P_20260621_152158.jpg","t":"15:21","xb":0.0,"zb":0.0,"d":56,"dl":"北東","p":1,"h":120,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_152215.jpg","t":"15:22","xb":1.1,"zb":-60.0,"d":203,"dl":"南西","p":-5,"h":129,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_152326.jpg","t":"15:23","xb":53.2,"zb":-89.7,"d":218,"dl":"南西","p":-9,"h":147,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_153204.jpg","t":"15:32","xb":107.0,"zb":-116.3,"d":30,"dl":"北東","p":-22,"h":131,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_153309.jpg","t":"15:33","xb":154.7,"zb":-152.7,"d":34,"dl":"北東","p":-8,"h":133,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_153655.jpg","t":"15:36","xb":207.8,"zb":-180.5,"d":15,"dl":"北","p":9,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_153925.jpg","t":"15:39","xb":264.3,"zb":-200.9,"d":43,"dl":"北東","p":-21,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154210.jpg","t":"15:42","xb":296.7,"zb":-251.4,"d":247,"dl":"南西","p":-6,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154256.jpg","t":"15:42","xb":238.1,"zb":-238.5,"d":216,"dl":"南西","p":-2,"h":143,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154358.jpg","t":"15:43","xb":265.7,"zb":-291.8,"d":119,"dl":"南東","p":-11,"h":112,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154418.jpg","t":"15:44","xb":283.9,"zb":-348.9,"d":309,"dl":"北西","p":-5,"h":122,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154616.jpg","t":"15:46","xb":328.2,"zb":-389.4,"d":13,"dl":"北","p":-27,"h":104,"r":0,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_154704.jpg","t":"15:47","xb":305.7,"zb":-333.8,"d":245,"dl":"南西","p":3,"h":133,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154713.jpg","t":"15:47","xb":247.9,"zb":-349.9,"d":353,"dl":"北","p":16,"h":153,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154817.jpg","t":"15:48","xb":304.1,"zb":-328.8,"d":174,"dl":"南","p":-12,"h":143,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_154945.jpg","t":"15:49","xb":361.0,"zb":-347.6,"d":111,"dl":"東","p":-16,"h":124,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_155011.jpg","t":"15:50","xb":415.3,"zb":-373.2,"d":58,"dl":"北東","p":9,"h":153,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_155122.jpg","t":"15:51","xb":458.1,"zb":-415.3,"d":43,"dl":"北東","p":-20,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_155157.jpg","t":"15:51","xb":487.1,"zb":-467.8,"d":260,"dl":"西","p":-15,"h":139,"r":0,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_155249.jpg","t":"15:52","xb":537.6,"zb":-500.1,"d":59,"dl":"北東","p":18,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_155557.jpg","t":"15:55","xb":597.1,"zb":-491.9,"d":336,"dl":"北西","p":-9,"h":104,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_155702.jpg","t":"15:57","xb":623.9,"zb":-438.3,"d":33,"dl":"北東","p":-2,"h":137,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_155735.jpg","t":"15:57","xb":679.7,"zb":-416.2,"d":115,"dl":"南東","p":28,"h":143,"r":0,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_155756.jpg","t":"15:57","xb":662.4,"zb":-358.7,"d":124,"dl":"南東","p":3,"h":139,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_155922.jpg","t":"15:59","xb":615.0,"zb":-322.0,"d":31,"dl":"北東","p":13,"h":153,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_160227.jpg","t":"16:02","xb":560.5,"zb":-296.7,"d":117,"dl":"南東","p":-11,"h":141,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_160254.jpg","t":"16:02","xb":506.2,"zb":-271.2,"d":27,"dl":"北東","p":70,"h":168,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_160335.jpg","t":"16:03","xb":451.4,"zb":-246.8,"d":26,"dl":"北東","p":6,"h":156,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_160656.jpg","t":"16:06","xb":391.7,"zb":-241.0,"d":235,"dl":"南西","p":8,"h":151,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_160731.jpg","t":"16:07","xb":338.7,"zb":-269.0,"d":357,"dl":"北","p":-10,"h":137,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_161750.jpg","t":"16:17","xb":371.6,"zb":-319.2,"d":234,"dl":"南西","p":9,"h":141,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_162014.jpg","t":"16:20","xb":423.9,"zb":-348.5,"d":128,"dl":"南東","p":24,"h":149,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_162122.jpg","t":"16:21","xb":474.4,"zb":-380.9,"d":36,"dl":"北東","p":72,"h":164,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_165111.jpg","t":"16:51","xb":508.5,"zb":-430.3,"d":338,"dl":"北","p":42,"h":160,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_170339.jpg","t":"17:03","xb":469.1,"zb":-385.0,"d":55,"dl":"北東","p":26,"h":143,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_171350.jpg","t":"17:13","xb":508.7,"zb":-339.9,"d":56,"dl":"北東","p":-10,"h":133,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_171807.jpg","t":"17:18","xb":472.6,"zb":-387.8,"d":145,"dl":"南東","p":-26,"h":124,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_171834.jpg","t":"17:18","xb":422.0,"zb":-420.1,"d":164,"dl":"南","p":-22,"h":122,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_171941.jpg","t":"17:19","xb":376.6,"zb":-459.3,"d":214,"dl":"南西","p":-17,"h":118,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_173136.jpg","t":"17:31","xb":334.0,"zb":-501.6,"d":138,"dl":"南東","p":-15,"h":145,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_173224.jpg","t":"17:32","xb":319.4,"zb":-559.8,"d":305,"dl":"北西","p":-12,"h":139,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_173355.jpg","t":"17:33","xb":277.7,"zb":-603.0,"d":98,"dl":"東","p":-15,"h":124,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_173755.jpg","t":"17:37","xb":319.6,"zb":-645.9,"d":53,"dl":"北東","p":16,"h":151,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_173809.jpg","t":"17:38","xb":288.9,"zb":-594.4,"d":69,"dl":"東","p":-53,"h":52,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_173840.jpg","t":"17:38","xb":302.8,"zb":-652.8,"d":48,"dl":"北東","p":-76,"h":66,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_174201.jpg","t":"17:42","xb":347.6,"zb":-612.9,"d":151,"dl":"南東","p":60,"h":164,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_174227.jpg","t":"17:42","xb":384.7,"zb":-660.1,"d":157,"dl":"南東","p":-17,"h":124,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_174233.jpg","t":"17:42","xb":367.6,"zb":-602.5,"d":240,"dl":"南西","p":-53,"h":104,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_175112.jpg","t":"17:51","xb":397.9,"zb":-654.3,"d":65,"dl":"北東","p":-10,"h":129,"r":0,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_175133.jpg","t":"17:51","xb":428.9,"zb":-705.8,"d":237,"dl":"南西","p":2,"h":139,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_175157.jpg","t":"17:51","xb":457.6,"zb":-758.4,"d":240,"dl":"南西","p":-62,"h":50,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_175255.jpg","t":"17:52","xb":484.7,"zb":-811.9,"d":235,"dl":"南西","p":7,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_175309.jpg","t":"17:53","xb":516.3,"zb":-863.0,"d":161,"dl":"南","p":63,"h":162,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_175357.jpg","t":"17:53","xb":546.8,"zb":-914.7,"d":91,"dl":"東","p":33,"h":156,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_175412.jpg","t":"17:54","xb":583.4,"zb":-962.2,"d":279,"dl":"西","p":34,"h":128,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_175426.jpg","t":"17:54","xb":580.7,"zb":-1022.1,"d":240,"dl":"南西","p":50,"h":160,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_175636.jpg","t":"17:56","xb":611.6,"zb":-1073.6,"d":162,"dl":"南","p":72,"h":162,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_175650.jpg","t":"17:56","xb":649.5,"zb":-1120.1,"d":237,"dl":"南西","p":67,"h":160,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_175704.jpg","t":"17:57","xb":671.1,"zb":-1176.1,"d":313,"dl":"北西","p":44,"h":158,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_175755.jpg","t":"17:57","xb":695.4,"zb":-1231.0,"d":247,"dl":"南西","p":-13,"h":133,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_175849.jpg","t":"17:58","xb":714.8,"zb":-1287.7,"d":102,"dl":"東","p":50,"h":147,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_175922.jpg","t":"17:59","xb":744.5,"zb":-1339.9,"d":307,"dl":"北西","p":-22,"h":110,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_180018.jpg","t":"18:00","xb":692.7,"zb":-1370.1,"d":149,"dl":"南東","p":37,"h":133,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_180145.jpg","t":"18:01","xb":736.9,"zb":-1410.7,"d":66,"dl":"北東","p":-25,"h":112,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_180303.jpg","t":"18:03","xb":771.0,"zb":-1460.1,"d":144,"dl":"南東","p":33,"h":145,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_180309.jpg","t":"18:03","xb":828.4,"zb":-1442.4,"d":242,"dl":"南西","p":-4,"h":118,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_180340.jpg","t":"18:03","xb":850.6,"zb":-1498.2,"d":151,"dl":"南東","p":-1,"h":116,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_180605.jpg","t":"18:06","xb":889.4,"zb":-1543.9,"d":234,"dl":"南西","p":-28,"h":108,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_180839.jpg","t":"18:08","xb":919.2,"zb":-1596.0,"d":145,"dl":"南東","p":-27,"h":102,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_180851.jpg","t":"18:08","xb":966.5,"zb":-1632.9,"d":139,"dl":"南東","p":-83,"h":50,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_180941.jpg","t":"18:09","xb":994.2,"zb":-1686.1,"d":227,"dl":"南西","p":21,"h":116,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_181145.jpg","t":"18:11","xb":1037.2,"zb":-1728.0,"d":47,"dl":"北東","p":4,"h":112,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_181204.jpg","t":"18:12","xb":1083.9,"zb":-1765.6,"d":139,"dl":"南東","p":5,"h":124,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_181226.jpg","t":"18:12","xb":1096.1,"zb":-1824.4,"d":38,"dl":"北東","p":43,"h":149,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_181252.jpg","t":"18:12","xb":1134.9,"zb":-1870.1,"d":140,"dl":"南東","p":32,"h":151,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_181323.jpg","t":"18:13","xb":1168.5,"zb":-1919.8,"d":53,"dl":"北東","p":-22,"h":110,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_181603.jpg","t":"18:16","xb":1199.9,"zb":-1971.0,"d":43,"dl":"北東","p":-33,"h":110,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_181630.jpg","t":"18:16","xb":1153.5,"zb":-1932.9,"d":54,"dl":"北東","p":8,"h":112,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_181709.jpg","t":"18:17","xb":1188.7,"zb":-1981.5,"d":337,"dl":"北西","p":-49,"h":85,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_181740.jpg","t":"18:17","xb":1148.1,"zb":-1937.3,"d":293,"dl":"北西","p":-61,"h":75,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_181803.jpg","t":"18:18","xb":1180.9,"zb":-1987.6,"d":194,"dl":"南","p":51,"h":145,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_181930.jpg","t":"18:19","xb":1214.6,"zb":-2037.2,"d":202,"dl":"南","p":-48,"h":112,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_181947.jpg","t":"18:19","xb":1238.2,"zb":-2092.4,"d":57,"dl":"北東","p":21,"h":141,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_182022.jpg","t":"18:20","xb":1283.6,"zb":-2131.6,"d":57,"dl":"北東","p":35,"h":118,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_182102.jpg","t":"18:21","xb":1332.0,"zb":-2096.3,"d":145,"dl":"南東","p":-17,"h":100,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_182110.jpg","t":"18:21","xb":1332.0,"zb":-2036.3,"d":139,"dl":"南東","p":-11,"h":122,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_182219.jpg","t":"18:22","xb":1378.8,"zb":-2073.9,"d":238,"dl":"南西","p":-30,"h":102,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_182250.jpg","t":"18:22","xb":1377.5,"zb":-2133.9,"d":260,"dl":"西","p":-6,"h":120,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_182323.jpg","t":"18:23","xb":1378.9,"zb":-2193.8,"d":174,"dl":"南","p":70,"h":153,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_182348.jpg","t":"18:23","xb":1378.9,"zb":-2253.8,"d":280,"dl":"西","p":-22,"h":118,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_182356.jpg","t":"18:23","xb":1399.5,"zb":-2310.2,"d":176,"dl":"南","p":-5,"h":118,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_182620.jpg","t":"18:26","xb":1455.7,"zb":-2331.3,"d":56,"dl":"北東","p":1,"h":126,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_182721.jpg","t":"18:27","xb":1414.6,"zb":-2375.0,"d":125,"dl":"南東","p":-2,"h":120,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_182742.jpg","t":"18:27","xb":1365.1,"zb":-2408.9,"d":196,"dl":"南","p":-14,"h":137,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_182850.jpg","t":"18:28","xb":1381.0,"zb":-2466.8,"d":84,"dl":"東","p":-5,"h":120,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_183011.jpg","t":"18:30","xb":1337.2,"zb":-2507.8,"d":143,"dl":"南東","p":3,"h":124,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_183021.jpg","t":"18:30","xb":1375.2,"zb":-2554.2,"d":224,"dl":"南西","p":-31,"h":126,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_183143.jpg","t":"18:31","xb":1413.9,"zb":-2600.0,"d":206,"dl":"南西","p":-61,"h":91,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_183441.jpg","t":"18:34","xb":1462.6,"zb":-2635.1,"d":28,"dl":"北東","p":-3,"h":120,"r":0,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_183533.jpg","t":"18:35","xb":1517.3,"zb":-2659.7,"d":119,"dl":"南東","p":14,"h":133,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_183634.jpg","t":"18:36","xb":1561.3,"zb":-2700.6,"d":208,"dl":"南西","p":15,"h":124,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_183728.jpg","t":"18:37","xb":1601.5,"zb":-2745.1,"d":31,"dl":"北東","p":20,"h":145,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_183742.jpg","t":"18:37","xb":1581.9,"zb":-2801.8,"d":208,"dl":"南西","p":4,"h":128,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_184111.jpg","t":"18:41","xb":1532.4,"zb":-2768.0,"d":73,"dl":"東","p":41,"h":137,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_185906.jpg","t":"18:59","xb":1583.0,"zb":-2800.2,"d":139,"dl":"南東","p":1,"h":112,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_190245.jpg","t":"19:02","xb":1635.1,"zb":-2830.0,"d":199,"dl":"南","p":27,"h":141,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_190312.jpg","t":"19:03","xb":1673.5,"zb":-2876.1,"d":22,"dl":"北","p":14,"h":116,"r":90,"n":"","sg":"manual","sd":"manual","st":"exif"},{"f":"P_20260621_191005.jpg","t":"19:10","xb":1719.9,"zb":-2914.1,"d":358,"dl":"北","p":8,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191020.jpg","t":"19:10","xb":1659.9,"zb":-2916.8,"d":46,"dl":"北東","p":-1,"h":124,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191213.jpg","t":"19:12","xb":1707.9,"zb":-2952.8,"d":115,"dl":"南東","p":56,"h":145,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191228.jpg","t":"19:12","xb":1763.3,"zb":-2976.0,"d":131,"dl":"南東","p":-2,"h":133,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191454.jpg","t":"19:14","xb":1813.2,"zb":-3009.2,"d":316,"dl":"北西","p":35,"h":135,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191722.jpg","t":"19:17","xb":1866.0,"zb":-3037.7,"d":268,"dl":"西","p":0,"h":126,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191820.jpg","t":"19:18","xb":1832.6,"zb":-2987.9,"d":203,"dl":"南西","p":-7,"h":115,"r":0,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191916.jpg","t":"19:19","xb":1840.3,"zb":-3047.4,"d":341,"dl":"北","p":-30,"h":102,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_191924.jpg","t":"19:19","xb":1812.3,"zb":-3100.5,"d":16,"dl":"北","p":-42,"h":85,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"},{"f":"P_20260621_192038.jpg","t":"19:20","xb":1861.4,"zb":-3134.9,"d":136,"dl":"南東","p":74,"h":156,"r":90,"n":"","sg":"exif","sd":"manual","st":"exif"}]};
+const P = DATA.p, N = P.length;
+const TOPCM = 170;
+document.getElementById('count').textContent = N;
+const DDIR=[]; for(let i=0;i<N-1;i++){ const dx=P[i+1].xb-P[i].xb, dz=P[i+1].zb-P[i].zb, l=Math.hypot(dx,dz)||1; DDIR.push([dx/l,dz/l]); }
+
+const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('c'), antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1115);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 1000000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+scene.add(new THREE.AmbientLight(0xffffff,0.95));
+const dlight = new THREE.DirectionalLight(0xffffff,0.45); dlight.position.set(1,2,1); scene.add(dlight);
+
+// 実寸固定値（mm/cm）
+// ===== 固定値（実寸 mm/cm）=====
+const CEIL_MM = 4000;          // 天井高
+const CEIL_CM = CEIL_MM/10;    // 400cm
+const PAPER_LONG = 120;        // 写真の長辺(mm) 90×120縦長
+const TRUSS_CELL_L = 1250;     // 長辺方向の1マス(mm)
+const TRUSS_CELL_S = 1350;     // 短辺方向の1マス(mm)
+const TRUSS_NL = 6;            // 長辺マス数（固定）
+const TRUSS_NS = 2;            // 短辺マス数（固定）
+const TRUSS_W = TRUSS_NL*TRUSS_CELL_L;  // 7500mm
+const TRUSS_H = TRUSS_NS*TRUSS_CELL_S;  // 2700mm
+const SPREAD = 35;        // 方位キープ↔分散（固定）
+const CORD_PITCH = 270;   // 紐の間隔mm（固定）
+let state = {color:'id', path:true, ground:true,
+             strings:true, rangeL:100, rangeS:100,
+             trussShow:true,
+             tegThresh:12, tegSlack:0, numbers:true,
+             cordDir:'auto', cordShow:true, spacingShow:true};
+let world = new THREE.Group(); scene.add(world);
+const texLoader = new THREE.TextureLoader();
+
+function colorOf(i){
+  const c = new THREE.Color();
+  if(state.color==='id'){ const h=((i*137.508)%360)/360, l=[0.42,0.55,0.66][i%3]; c.setHSL(h,0.70,l); }
+  else if(state.color==='time'){ c.copy(new THREE.Color(0x1d9e75)).lerp(new THREE.Color(0xd85a30), i/(N-1)); }
+  else if(state.color==='dir'){ c.setHSL(((P[i].d%360)+360)%360/360, 0.62, 0.55); }
+  else { const t=Math.max(0,Math.min(1,(P[i].p+90)/180)); c.copy(new THREE.Color(0x378add)).lerp(new THREE.Color(0xe24b4a), t); }
+  return c;
+}
+function lookVec(i){
+  const az = P[i].d*Math.PI/180, p = P[i].p*Math.PI/180;
+  return new THREE.Vector3(Math.sin(az)*Math.cos(p), Math.sin(p), -Math.cos(az)*Math.cos(p)).normalize();
+}
+
+function loopCalc(i){
+  // 1枚=輪1本。穴に通してメッシュの1ノードに両端を結ぶ。
+  // 上の穴へ下り・下の穴から戻る2本の縦区間で傾き項Vは打ち消し合う → 2×(天井-高さ)。
+  // そこに穴どうしを結ぶ紙の長辺ぶんと結び代を足す。
+  const ceil=CEIL_CM, h=P[i].h, slack=state.tegSlack;
+  const longCm=PAPER_LONG/10;                  // 紙の長辺(cm)=12
+  const drop=Math.max(0, ceil-h);              // 天井→写真の落差(cm)
+  const total=2*drop + longCm + slack;
+  return {drop:drop, edge:longCm, slack:slack, total:total};
+}
+let nodeMeshes = [];
+let labelSprites = [];
+let selected = null;      // 選択中の写真index（クリックで設定）
+let planData = null;      // 平面図SVG書き出し用（紐・テグス・距離）
+const GRAY = 0x39414f;    // 非選択のグレー
+const LABEL_K = 0.0035;   // ラベルを画面上ほぼ一定サイズにする距離係数
+let doFrameNext = true;
+function jit(i){ const v=Math.sin(i*12.9898)*43758.5453; return (v - Math.floor(v)) - 0.5; }
+function clearWorld(){ while(world.children.length){ const o=world.children.pop(); if(o.geometry)o.geometry.dispose(); if(o.material&&o.material.dispose)o.material.dispose(); } nodeMeshes=[]; labelSprites=[]; }
+function build(){ clearWorld(); buildHang(); }
+
+function bearingAnchors(W,H){
+  let minx=1e9,maxx=-1e9,minz=1e9,maxz=-1e9;
+  for(let i=0;i<N;i++){const x=P[i].xb,z=P[i].zb; if(x<minx)minx=x;if(x>maxx)maxx=x;if(z<minz)minz=z;if(z>maxz)maxz=z;}
+  const bw=(maxx-minx)||1, bh=(maxz-minz)||1, sc=Math.min(W/bw,H/bh);
+  const uw=bw*sc, uh=bh*sc, ox=(W-uw)/2, oy=(H-uh)/2;
+  return P.map(function(p){ return [(p.xb-minx)*sc+ox, (p.zb-minz)*sc+oy]; });
+}
+let hangCache=null, hangKey='', hangCollisions=0;
+let lastGrid=[];
+function relaxHang(W,H,paper,spread){
+  const key=W+'_'+H+'_'+paper+'_'+spread;
+  if(key===hangKey && hangCache) return hangCache;
+  const anc=bearingAnchors(W,H);
+  const pos=anc.map(function(a,i){ return {x:a[0], z:a[1], y:P[i].h*10}; });  // 高さcm→mm（実寸）
+  const t=spread/100;
+  const ideal=Math.sqrt(W*H/N);
+  const R=ideal*(0.55+1.05*t);
+  const kDir=0.45*(1-t)+0.08*t;
+  const kRep=0.05;
+  const cr=paper*0.6, cMin=2*cr, cMin2=cMin*cMin, pad=paper*0.5;
+  const cx=W/2, cz=H/2;
+  for(let it=0;it<240;it++){
+    for(let i=0;i<N-1;i++){
+      const dx=pos[i+1].x-pos[i].x, dz=pos[i+1].z-pos[i].z, len=Math.hypot(dx,dz)||1;
+      const tx=DDIR[i][0]*len, tz=DDIR[i][1]*len;
+      const ex=(tx-dx)*kDir*0.5, ez=(tz-dz)*kDir*0.5;
+      pos[i].x-=ex; pos[i].z-=ez; pos[i+1].x+=ex; pos[i+1].z+=ez;
+    }
+    for(let i=0;i<N;i++){ for(let j=i+1;j<N;j++){
+      const dx=pos[j].x-pos[i].x, dz=pos[j].z-pos[i].z, d=Math.hypot(dx,dz);
+      if(d<R && d>1e-3){ const f=kRep*(R-d)/d, fx=dx*f, fz=dz*f; pos[i].x-=fx; pos[i].z-=fz; pos[j].x+=fx; pos[j].z+=fz; }
+    }}
+    for(let i=0;i<N;i++){ for(let j=i+1;j<N;j++){
+      const dx=pos[j].x-pos[i].x, dy=pos[j].y-pos[i].y, dz=pos[j].z-pos[i].z, d2=dx*dx+dy*dy+dz*dz;
+      if(d2<cMin2){ const d=Math.sqrt(d2)||0.001, ov=(cMin-d)/2; let hx=dx,hz=dz,hl=Math.hypot(hx,hz);
+        if(hl<1e-3){hx=jit(i*2+1);hz=jit(j*2+1);hl=Math.hypot(hx,hz)||1;}
+        const ux=hx/hl,uz=hz/hl; pos[i].x-=ux*ov;pos[i].z-=uz*ov;pos[j].x+=ux*ov;pos[j].z+=uz*ov; }
+    }}
+    let mx=0,mz=0; for(let i=0;i<N;i++){mx+=pos[i].x;mz+=pos[i].z;} mx/=N;mz/=N;
+    const sx=cx-mx, sz=cz-mz;
+    for(let i=0;i<N;i++){ pos[i].x+=sx; pos[i].z+=sz;
+      if(pos[i].x<pad)pos[i].x=pad; if(pos[i].x>W-pad)pos[i].x=W-pad;
+      if(pos[i].z<pad)pos[i].z=pad; if(pos[i].z>H-pad)pos[i].z=H-pad; }
+  }
+  let col=0;
+  for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+    const dx=pos[j].x-pos[i].x, dy=pos[j].y-pos[i].y, dz=pos[j].z-pos[i].z;
+    if(dx*dx+dy*dy+dz*dz < cMin2-1) col++;
+  }
+  hangCollisions=col; hangKey=key; hangCache=pos;
+  return pos;
+}
+
+function buildHang(){
+  // 実寸(mm)。トラスは固定。写真を吊る範囲だけ長辺/短辺で可変。
+  const Wt=TRUSS_W, Ht=TRUSS_H;                                       // トラス実寸(固定)
+  const W=Wt*state.rangeL/100, H=Ht*state.rangeS/100;                 // 写真を吊る範囲
+  const paper=PAPER_LONG;
+  let longCnt=0, shortCnt=0;
+  const anySel=(selected!==null);
+  const pos=relaxHang(W,H,paper,SPREAD);
+  const S=320/Math.max(Wt,Ht);                                        // トラスに合わせ縮尺
+  const ceilU=CEIL_MM*S;
+  const wtH=Wt/2*S, htH=Ht/2*S;
+  let tegTotalCm=0, lineCnt=0;
+  if(state.ground){
+    world.add(new THREE.GridHelper(Math.max(Wt,Ht)*S*1.05, 28, 0x2a2f3a, 0x20242c));
+    const fp=[[-wtH,-htH],[wtH,-htH],[wtH,htH],[-wtH,htH],[-wtH,-htH]].map(function(p){return new THREE.Vector3(p[0],0.2,p[1]);});
+    world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(fp), new THREE.LineBasicMaterial({color:0x4a5568})));
+    addLabel('N',0,0,-htH-12); addLabel('S',0,0,htH+12); addLabel('E',wtH+12,0,0); addLabel('W',-wtH-12,0,0);
+    heightRuler(-wtH, htH, S);
+  }
+  // ---- トラスのマス目（吊り構造）を天井高さに描画 ----
+  if(state.trussShow){
+    const tp=[];
+    for(let k=0;k<=TRUSS_NS;k++){ const z=(k*TRUSS_CELL_S - Ht/2)*S; tp.push(new THREE.Vector3(-wtH,ceilU,z), new THREE.Vector3(wtH,ceilU,z)); } // 長辺方向のバー
+    for(let k=0;k<=TRUSS_NL;k++){ const x=(k*TRUSS_CELL_L - Wt/2)*S;   tp.push(new THREE.Vector3(x,ceilU,htH), new THREE.Vector3(x,ceilU,-htH)); } // クロスバー
+    world.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(tp), new THREE.LineBasicMaterial({color:0x6b86b3, transparent:true, opacity:0.85})));
+  }
+  // ---- 紐(コード)レイアウト：一方向の平行な紐にスナップ ----
+  lastGrid=new Array(N);
+  const along = (state.cordDir==='z') ? 'z' : (state.cordDir==='x') ? 'x' : (W>=H?'x':'z'); // 紐が伸びる軸
+  const crossKey = (along==='x') ? 'z' : 'x';
+  const center = (along==='x') ? H/2 : W/2;     // クロス方向の中心
+  const pitch = CORD_PITCH;
+  const posS = pos.map(function(p){ return {x:p.x, z:p.z, y:p.y}; });
+  const lanes = {};
+  const laneCross = function(li){ return center + li*pitch; };
+  function addLane(li,i){ if(!lanes[li]) lanes[li]={cross:laneCross(li), idx:[]}; lanes[li].idx.push(i); }
+  // 全写真が2テグス・両隣の紐にまたがせて分散。傾き大=長辺結び / ほぼ垂直=短辺結び（真の位置を保持）
+  const tegEdge = new Array(N);
+  for(let i=0;i<N;i++){
+    const cv = posS[i][crossKey];
+    const laneLo = Math.floor((cv-center)/pitch), laneHi = laneLo+1;
+    tegEdge[i] = (Math.abs(P[i].p) > state.tegThresh) ? 'long' : 'short';
+    addLane(laneLo,i); addLane(laneHi,i);
+    lastGrid[i] = {span:true, edge:tegEdge[i], laneLo:laneLo, laneHi:laneHi, cross:Math.round(cv), along:Math.round(posS[i][along])};
+  }
+  // 紐は「写真が乗る格子(セル)」だけに張る。空きセルは張らず、飛び地は別セグメントに分割。
+  const alongTotal = (along==='x') ? Wt : Ht;
+  const alongLayout = (along==='x') ? W : H;
+  const offset = (alongTotal - alongLayout)/2;               // 配置枠→トラス座標
+  const nCross  = (along==='x') ? TRUSS_NL : TRUSS_NS;
+  const cellCross = (along==='x') ? TRUSS_CELL_L : TRUSS_CELL_S;
+  const crossScene = function(cmm){ return (along==='x') ? -(cmm-H/2)*S : (cmm-W/2)*S; };
+  const makePt = function(av, cs){ return (along==='x') ? new THREE.Vector3((av-Wt/2)*S, ceilU, cs) : new THREE.Vector3(cs, ceilU, -(av-Ht/2)*S); };
+  const tieGeo = new THREE.SphereGeometry(Math.max(0.7, 18*S), 8, 8);
+  const selLanes = (selected!==null && lastGrid[selected]) ? [lastGrid[selected].laneLo, lastGrid[selected].laneHi] : null;
+  const conGeo = new THREE.SphereGeometry(Math.max(0.5, 12*S), 8, 8);
+  const fixGeo = new THREE.ConeGeometry(Math.max(0.8, 15*S), Math.max(1.6, 30*S), 4);   // 固定側の△マーカー(cLo)
+  const conGeoSel = Math.max(1.4, 32*S);                          // 選択時の接点は大きく
+  let cordCount=0, cordTotal=0, cordMax=0, nearPairs=0;
+  let gapMin=1e9, gapMax=0, gapSum=0, gapCount=0;
+  const laneKeys = Object.keys(lanes), laneCount = laneKeys.length;
+  const _lanes=[];
+  laneKeys.forEach(function(k){
+    const ln=lanes[k], ids=ln.idx, cs=crossScene(ln.cross);
+    const _segs=[];
+    const isSelLane = selLanes && selLanes.indexOf(+k)>=0;                    // 選択写真が使う紐
+    const cordCol = isSelLane?0xffffff:0xefb05d, cordOp = isSelLane?1:(anySel?0.6:0.9);   // 選択中も紐は見える
+    const tieMat = new THREE.MeshBasicMaterial({color:isSelLane?0xffffff:0x9fb4dd, transparent:true, opacity:isSelLane?1:(anySel?0.55:1)});
+    // 占有セルと、各セルに乗るテグスの沿い位置
+    const cellCnt={}, cellA={};
+    ids.forEach(function(i){ const av=posS[i][along]+offset; let ci=Math.floor(av/cellCross); ci=Math.max(0,Math.min(nCross-1,ci)); cellCnt[ci]=(cellCnt[ci]||0)+1; (cellA[ci]=cellA[ci]||[]).push(av); });
+    const occ=Object.keys(cellCnt).map(Number).sort(function(a,b){return a-b;});
+    // 連続する占有セルを1本のセグメントに
+    let s=occ[0], p=occ[0];
+    for(let x=1;x<=occ.length;x++){
+      if(x<occ.length && occ[x]===p+1){ p=occ[x]; continue; }
+      const a0=s*cellCross, a1=(p+1)*cellCross;
+      cordCount++; cordTotal+=(a1-a0); _segs.push([a0,a1]);
+      // このセグメント上のテグス位置（連続する紐なので、隣接差＝紐上の実間隔）
+      let segA=[]; for(let c=s;c<=p;c++){ if(cellA[c]) segA=segA.concat(cellA[c]); }
+      segA.sort(function(a,b){return a-b;});
+      if(segA.length>cordMax)cordMax=segA.length;
+      for(let q=1;q<segA.length;q++){   // 統計はテグス同士の間隔で
+        const gap=segA[q]-segA[q-1]; if(gap<paper)nearPairs++;
+        gapSum+=gap; gapCount++; if(gap<gapMin)gapMin=gap; if(gap>gapMax)gapMax=gap;
+      }
+      if(state.spacingShow && !anySel){   // 隣が桟なら桟まで(青)、テグス同士なら間隔(緑)
+        const pts2=[]; for(let c=a0;c<=a1;c+=cellCross) pts2.push({a:c,bar:true}); segA.forEach(function(a){pts2.push({a:a,bar:false});});
+        pts2.sort(function(u,v){return u.a-v.a;});
+        for(let q=1;q<pts2.length;q++){ const d=pts2[q].a-pts2[q-1].a; if(d<1)continue;
+          const bar=pts2[q].bar||pts2[q-1].bar, pt=makePt((pts2[q].a+pts2[q-1].a)/2, cs);
+          addLabelAt(Math.round(d)+'', pt.x, pt.y+3, pt.z, 6, bar?'#9fb4dd':'#7fe3c4');
+        }
+      }
+      if(state.cordShow){
+        world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([makePt(a0,cs), makePt(a1,cs)]), new THREE.LineBasicMaterial({color:cordCol, transparent:true, opacity:cordOp})));
+        for(let c=s;c<=p+1;c++){ const m=new THREE.Mesh(tieGeo,tieMat); m.position.copy(makePt(c*cellCross,cs)); world.add(m); } // 結束点(青)
+      }
+      if(x<occ.length){ s=occ[x]; p=occ[x]; }
+    }
+    _lanes.push({li:+k, cross:ln.cross, segs:_segs, tegus: ids.map(function(j){return {no:j+1, a:Math.round(posS[j][along]+offset), fix:(+k===lastGrid[j].laneLo)};})});
+  });
+  planData={Wt:Wt, Ht:Ht, cellCross:cellCross, nCross:nCross, pitch:CORD_PITCH, lanes:_lanes};
+  // 選択中：その写真の2本の紐上で、隣のテグス（無ければトラスの桟）までの間隔を表示
+  if(selected!==null && lastGrid[selected] && lastGrid[selected].span){
+    const gsel=lastGrid[selected], selTa=posS[selected][along]+offset, nbrParts=[];
+    [gsel.laneLo, gsel.laneHi].forEach(function(li){
+      const ln=lanes[li]; if(!ln) return; const cs=crossScene(laneCross(li));
+      const others=ln.idx.filter(function(j){return j!==selected;}).map(function(j){return posS[j][along]+offset;});
+      const leftArr=others.filter(function(a){return a<selTa;}), rightArr=others.filter(function(a){return a>selTa;});
+      const cellL=Math.floor(selTa/cellCross)*cellCross, cellR=cellL+cellCross;   // 両隣のトラスの桟
+      // 隣のテグスまで（白・紐の下側）
+      if(leftArr.length){ const n=Math.max.apply(null,leftArr), pt=makePt((selTa+n)/2,cs); addLabelAt(Math.round(selTa-n)+'', pt.x, pt.y+5, pt.z, 7, '#ffffff'); }
+      if(rightArr.length){ const n=Math.min.apply(null,rightArr), pt=makePt((selTa+n)/2,cs); addLabelAt(Math.round(n-selTa)+'', pt.x, pt.y+5, pt.z, 7, '#ffffff'); }
+      // トラスの桟まで（青・紐の上側）
+      const ptL=makePt((selTa+cellL)/2,cs), ptR=makePt((selTa+cellR)/2,cs);
+      addLabelAt(Math.round(selTa-cellL)+'桟', ptL.x, ptL.y-6, ptL.z, 6, '#9fb4dd');
+      addLabelAt(Math.round(cellR-selTa)+'桟', ptR.x, ptR.y-6, ptR.z, 6, '#9fb4dd');
+      nbrParts.push('#'+li+' 桟左'+Math.round(selTa-cellL)+'/右'+Math.round(cellR-selTa)+(leftArr.length?' 隣左'+Math.round(selTa-Math.max.apply(null,leftArr)):'')+(rightArr.length?'/右'+Math.round(Math.min.apply(null,rightArr)-selTa):''));
+    });
+    lastGrid[selected].nbrStr = nbrParts.join(' ／ ')+' mm';
+  }
+  const scenePos=[];
+  for(let i=0;i<N;i++){
+    const X=(posS[i].x-W/2)*S, Z=-(posS[i].z-H/2)*S, Y=posS[i].y*S;
+    const v=new THREE.Vector3(X,Y,Z); scenePos.push(v);
+    const land=(P[i].r!==90);
+    const pw=(land?paper:paper*0.75)*S, ph=(land?paper*0.75:paper)*S;
+    const isSel=(selected===i), dimO=(anySel&&!isSel);
+    const baseHex=colorOf(i).getHex();
+    const mat=new THREE.MeshBasicMaterial({color:(dimO?GRAY:baseHex), side:THREE.DoubleSide, transparent:true, opacity:(dimO?0.14:0.96)});
+    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph), mat); mesh.position.copy(v);
+    const lv=lookVec(i); mesh.lookAt(v.clone().add(lv));
+    mesh.userData={i}; world.add(mesh); nodeMeshes.push(mesh);
+    let up=new THREE.Vector3(0,1,0); up.addScaledVector(lv, -up.dot(lv)); if(up.lengthSq()<1e-6)up.set(0,0,1); up.normalize();
+    const topE=v.clone().add(up.clone().multiplyScalar(ph*0.5)), botE=v.clone().add(up.clone().multiplyScalar(-ph*0.5));
+    // 全写真2テグス：両隣の別々の紐に接続し、紐間に分散して吊る
+    const ta = posS[i][along] + offset;
+    const cv = posS[i][crossKey];
+    const laneLo = Math.floor((cv-center)/pitch), laneHi = laneLo+1;
+    const cLo = makePt(ta, crossScene(laneCross(laneLo))), cHi = makePt(ta, crossScene(laneCross(laneHi)));
+    const dropCm = Math.max(0, CEIL_CM - P[i].h);
+    const edgeCm = (tegEdge[i]==='long') ? PAPER_LONG/10 : (PAPER_LONG*0.75)/10;   // 長辺12 / 短辺9 cm
+    const lenLo = Math.hypot(dropCm, Math.abs(cv-laneCross(laneLo))/10), lenHi = Math.hypot(dropCm, Math.abs(cv-laneCross(laneHi))/10);
+    const lc = {type:2, edge:tegEdge[i], edgeCm:edgeCm, a:lenLo, b:lenHi, total:edgeCm+lenLo+lenHi+2*state.tegSlack};
+    const lineHex=isSel?0xffffff:(dimO?GRAY:baseHex), lineOp=dimO?0.1:0.8;
+    if(state.strings){ world.add(tegLineTo(topE,cLo,lineHex,lineOp)); world.add(tegLineTo(topE,cHi,lineHex,lineOp)); }
+    const contacts=[cLo,cHi];
+    if(tegEdge[i]==='long') longCnt++; else shortCnt++;
+    lineCnt+=2;
+    if(state.cordShow){
+      const conHex=isSel?0xffffff:(dimO?GRAY:baseHex);
+      const cmat=new THREE.MeshBasicMaterial({color:conHex, transparent:true, opacity:(dimO?0.18:1)});
+      const fg=isSel?new THREE.ConeGeometry(conGeoSel*1.1, conGeoSel*2.2, 4):fixGeo;   // 固定=△ (cLo=紐#laneLo)
+      const fm=new THREE.Mesh(fg,cmat); fm.position.copy(cLo); fm.userData={i:i}; world.add(fm); nodeMeshes.push(fm);
+      const sgeo=isSel?new THREE.SphereGeometry(conGeoSel,10,10):conGeo;               // 自在=○ (cHi=紐#laneHi)
+      const sm=new THREE.Mesh(sgeo,cmat); sm.position.copy(cHi); sm.userData={i:i}; world.add(sm); nodeMeshes.push(sm);
+    }
+    const showN = isSel || (selected===null && state.numbers);
+    if(showN){ const nCol=isSel?'#ffffff':('#'+baseHex.toString(16).padStart(6,'0')), nS=isSel?12:7;  // 番号も識別色に合わせる
+      contacts.forEach(function(pt){ addLabelAt(String(i+1), pt.x, pt.y+2, pt.z, nS, nCol); });
+      addLabelAt(String(i+1), topE.x, topE.y+3, topE.z, isSel?13:8, nCol); }
+    tegTotalCm+=lc.total; lastGrid[i].teg=lc;
+  }
+  if(state.path) addPath(scenePos,0.28);
+  const cel=document.getElementById('cordstat');
+  if(cel){ cel.innerHTML='トラス（固定） '+TRUSS_NL+'×'+TRUSS_NS+'マス ＝ '+(Wt/1000).toFixed(2)+'×'+(Ht/1000).toFixed(2)+'m ・ 天井'+(CEIL_MM/1000).toFixed(1)+'m<br>'
+    +'吊る範囲 長辺'+state.rangeL+'% × 短辺'+state.rangeS+'% ＝ '+(W/1000).toFixed(2)+'×'+(H/1000).toFixed(2)+'m<br>'
+    +'紐: <b style="color:#5dcaa5">'+cordCount+' 本</b>（'+laneCount+'レーン ・ 必要セルのみ ・ 向き '+(along==='x'?'横=長辺':'縦=短辺')+' ・ 間隔 '+pitch+'mm）<br>'
+    +'総延長 '+(cordTotal/1000).toFixed(2)+'m ・ 平均 '+(cordTotal/cordCount/1000).toFixed(2)+'m/本 ・ 1本最大 '+cordMax+'枚<br>'
+    +'テグス間隔: 最小 <b style="color:#7fe3c4">'+(gapCount?Math.round(gapMin):0)+'</b> / 平均 '+(gapCount?Math.round(gapSum/gapCount):0)+' / 最大 '+Math.round(gapMax)+' mm<br>'
+    +'<span style="color:#ffd36b">●</span>接点＋番号 ／ <span style="color:#7fe3c4">◇</span>テグス間隔 ／ <span style="color:#9fb4dd">◇</span>桟まで'
+    +(nearPairs?('<br><span style="color:#e24b4a">同じ紐で近接(&lt;紙幅) '+nearPairs+'ペア</span> → 間隔を詰めるか分散を上げて回避'):''); }
+  document.getElementById('stat').innerHTML='テグス総長: <b style="color:#5dcaa5">'+(tegTotalCm/100).toFixed(2)+' m</b> ・ テグス本数計 '+lineCnt+'（全て2テグス/紐間に分散）<br>長辺結び(傾き) '+longCnt+'枚 ／ 短辺結び(ほぼ垂直) '+shortCnt+'枚 ・ 実寸';
+  if(doFrameNext) frame(scenePos);
+}
+function tegLoop(node,topE,botE){
+  // 閉じた輪: ノード → 上穴 → 下穴 → ノード
+  const pts=[node.clone(), topE.clone(), botE.clone(), node.clone()];
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color:0x9aa3b2, transparent:true, opacity:0.6}));
+}
+function tegLineTo(top,bot,color,opacity){
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints([top.clone(), bot.clone()]), new THREE.LineBasicMaterial({color:(color==null?0x9aa3b2:color), transparent:true, opacity:(opacity==null?0.6:opacity)}));
+}
+function tegLine(pt,ceilU){
+  const a=new THREE.Vector3(pt.x, ceilU, pt.z);
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, pt.clone()]), new THREE.LineBasicMaterial({color:0x9aa3b2, transparent:true, opacity:0.6}));
+}
+
+function heightRuler(x,z,S){
+  const top=new THREE.Vector3(x, CEIL_MM*S, z), bot=new THREE.Vector3(x,0,z);
+  world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([bot,top]), new THREE.LineBasicMaterial({color:0x5dcaa5, transparent:true, opacity:0.6})));
+  for(let cm=0; cm<=CEIL_CM+1; cm+=50){ addLabelAt(cm+'cm', x-6, cm*10*S, z, 9, '#5dcaa5'); }
+}
+
+function addPath(pts,op){
+  const g=new THREE.BufferGeometry().setFromPoints(pts);
+  const colors=[]; for(let i=0;i<N;i++){const c=colorOf(i); colors.push(c.r,c.g,c.b);}
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
+  world.add(new THREE.Line(g, new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:op})));
+}
+function addLabelAt(txt,x,y,z,scale,color){
+  const cv=document.createElement('canvas'); cv.width=128; cv.height=64; const cx=cv.getContext('2d');
+  cx.font='bold 34px sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
+  cx.lineWidth=6; cx.strokeStyle='rgba(0,0,0,0.85)'; cx.strokeText(txt,64,34);
+  cx.fillStyle=color||'#9aa3b2'; cx.fillText(txt,64,34);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv), transparent:true, opacity:0.9}));
+  sp.position.set(x,y,z); sp.userData={bw:scale*2, bh:scale}; sp.scale.set(scale*2,scale,1); world.add(sp); labelSprites.push(sp);
+}
+function addLabel(txt,x,y,z){ addLabelAt(txt,x,y+6,z,16,'#9aa3b2'); }
+function frame(pos){
+  const box=new THREE.Box3().setFromPoints(pos);
+  const c=box.getCenter(new THREE.Vector3()), s=box.getSize(new THREE.Vector3());
+  const r=Math.max(s.x,s.y,s.z)||320;
+  controls.target.copy(c);
+  camera.position.set(c.x + r*0.9, c.y + r*0.7, c.z + r*1.1);
+  camera.near=Math.max(0.1,r/300); camera.far=r*60; camera.updateProjectionMatrix();
+}
+function rebuild(df){ doFrameNext = (df!==false); build(); }
+
+function updateLegend(){
+  const t=document.getElementById('leg-title'), bar=document.getElementById('leg-bar'),
+        a=document.getElementById('leg-a'), b=document.getElementById('leg-b');
+  if(state.color==='id'){ t.textContent='識別色（隣どうしを別色に）'; bar.style.background='linear-gradient(90deg,#e24b4a,#e2a24b,#7fe24b,#4be2b6,#4b8fe2,#a24be2,#e24b8f)'; a.textContent='番号ごとに'; b.textContent='別の色'; }
+  else if(state.color==='time'){ t.textContent='時間（撮影順）'; bar.style.background='linear-gradient(90deg,#1d9e75,#d85a30)'; a.textContent=P[0].t; b.textContent=P[N-1].t; }
+  else if(state.color==='dir'){ t.textContent='方位（撮影方向）'; bar.style.background='linear-gradient(90deg,hsl(0,62%,55%),hsl(90,62%,55%),hsl(180,62%,55%),hsl(270,62%,55%),hsl(360,62%,55%))'; a.textContent='色相=方位'; b.textContent='0°→360°'; }
+  else { t.textContent='仰角（見上げ/見下ろし）'; bar.style.background='linear-gradient(90deg,#378add,#e24b4a)'; a.textContent='-90° 下'; b.textContent='上 +90°'; }
+}
+
+const ray=new THREE.Raycaster(), mouse=new THREE.Vector2(); let down=null;
+renderer.domElement.addEventListener('pointerdown',function(e){down=[e.clientX,e.clientY];});
+renderer.domElement.addEventListener('pointerup',function(e){
+  if(!down) return; const dx=e.clientX-down[0], dy=e.clientY-down[1]; down=null;
+  if(Math.hypot(dx,dy)>5) return;
+  mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(mouse,camera);
+  const hit=ray.intersectObjects(nodeMeshes,false);
+  if(hit.length) setSel(hit[0].object.userData.i);
+  else if(selected!==null) setSel(null);
+});
+function setSel(i, keepBox){
+  selected=i;
+  if(!keepBox){ const se=document.getElementById('search'); if(se) se.value=(i==null?'':(i+1)); }
+  rebuild(false);                                             // 先に再描画して隣接間隔を算出
+  if(i==null) document.getElementById('panel').style.display='none'; else showPanel(i);
+}
+addEventListener('keydown',function(e){ if(e.key==='Escape' && selected!==null) setSel(null); });
+document.getElementById('search').oninput=function(e){ const v=parseInt(e.target.value,10);
+  if(v>=1 && v<=N) setSel(v-1, true); else if(selected!==null) setSel(null, true); };
+function srcBadge(v){ return '<span class="src '+(v==='exif'?'exif':'manual')+'">'+(v==='exif'?'EXIF':'手動')+'</span>'; }
+function showPanel(i){
+  const d=P[i];
+  document.getElementById('panel').style.display='block';
+  const img=document.getElementById('pimg'); img.style.display='block'; img.src=d.f;
+  img.onerror=function(){img.style.display='none';};
+  document.getElementById('pfn').textContent='No.'+(i+1)+'  '+d.f;
+  const note=document.getElementById('pnote'); note.textContent=d.n||''; note.style.display=d.n?'block':'none';
+  const g=(lastGrid&&lastGrid[i])?lastGrid[i]:null;
+  const teg=(g&&g.teg)?g.teg:loopCalc(i);
+  let tegStr, gridStr='';
+  if(g&&g.span){
+    tegStr = '2テグス '+(teg.edge==='long'?'長辺結び':'短辺結び')+' '+teg.a.toFixed(0)+'+'+teg.b.toFixed(0)+(teg.edgeCm?('+辺'+teg.edgeCm.toFixed(0)):'')+' = '+teg.total.toFixed(0)+'cm';
+    gridStr = '固定△ 紐#'+g.laneLo+' ／ 自在○ 紐#'+g.laneHi+' ・ 沿い'+g.along+'mm';
+  } else { tegStr = teg.total.toFixed(0)+'cm'; }
+  let hangStr='';
+  if(g&&g.span){ const E=g.teg.edge==='long'?120:90; const fixCm=Math.max(0,CEIL_CM-d.h)+state.tegSlack; const dMm=Math.round(E*Math.sin(Math.abs(d.p)*Math.PI/180)); const freeCm=fixCm+dMm/10; const cutCm=fixCm+freeCm+E/10;
+    hangStr='1本 '+(Math.round(cutCm)/100).toFixed(2)+'m（固定'+(Math.round(fixCm)/100).toFixed(2)+'＋自在'+(Math.round(freeCm)/100).toFixed(2)+'＋穴'+(E/10)+'cm ・ ΔL'+dMm+'mm）'; }
+  const rows=[ ['No.', (i+1)+' / '+N], ['日時', d.t + srcBadge(d.st)], ['方位', d.d+'° '+d.dl + srcBadge(d.sd)],
+    ['仰角', d.p+'°'], ['高さ', d.h+' cm'], ['回転', d.r+'°'], ['GPS', '緯度経度' + srcBadge(d.sg)],
+    ['テグス', tegStr] ];
+  if(hangStr) rows.push(['吊り(1本通し)', hangStr]);
+  if(gridStr) rows.push(['結束点', gridStr]);
+  if(g&&g.nbrStr) rows.push(['紐上の間隔', g.nbrStr]);
+  document.getElementById('pmeta').innerHTML = rows.map(function(r){return '<tr><td class="k">'+r[0]+'</td><td>'+r[1]+'</td></tr>';}).join('');
+}
+document.getElementById('pclose').onclick=function(){ if(selected!==null) setSel(null); else document.getElementById('panel').style.display='none'; };
+
+function syncUI(){ document.getElementById('hangctl').style.display='block'; }
+function seg(id,key){ document.querySelectorAll('#'+id+' button').forEach(function(b){ b.onclick=function(){
+  document.querySelectorAll('#'+id+' button').forEach(function(x){x.classList.remove('on');}); b.classList.add('on');
+  state[key]=b.dataset.v; if(key==='color')updateLegend(); rebuild(false);
+};});}
+seg('seg-color','color');
+function bindRange(id,key,fmt){ const el=document.getElementById(id), out=document.getElementById(id+'-v');
+  el.oninput=function(e){ state[key]=+e.target.value; if(out)out.textContent=(fmt?fmt(e.target.value):e.target.value); rebuild(false); }; }
+function bindRng(id,key,total){ const el=document.getElementById(id), out=document.getElementById(id+'-v'), om=document.getElementById(id+'mm-v');
+  el.oninput=function(e){ state[key]=+e.target.value; if(out)out.textContent=e.target.value; if(om)om.textContent=Math.round(total*e.target.value/100); rebuild(false); }; }
+bindRng('rangeL','rangeL', TRUSS_W); bindRng('rangeS','rangeS', TRUSS_H);
+document.getElementById('trussShow').onchange=function(e){state.trussShow=e.target.checked; rebuild(false);};
+bindRange('tegThresh','tegThresh');
+bindRange('tegSlack','tegSlack');
+seg('seg-cordDir','cordDir');
+document.getElementById('cordShow').onchange=function(e){state.cordShow=e.target.checked; rebuild(false);};
+document.getElementById('spacingShow').onchange=function(e){state.spacingShow=e.target.checked; rebuild(false);};
+document.getElementById('path').onchange=function(e){state.path=e.target.checked; rebuild(false);};
+document.getElementById('ground').onchange=function(e){state.ground=e.target.checked; rebuild(false);};
+document.getElementById('strings').onchange=function(e){state.strings=e.target.checked; rebuild(false);};
+document.getElementById('numbers').onchange=function(e){state.numbers=e.target.checked; rebuild(false);};
+document.getElementById('reset').onclick=function(){ frame(nodeMeshes.map(function(m){return m.position;})); };
+function exportCSV(){
+  const head=['No','file','dateTime','dir_deg','dir_label','pitch','height_cm','rotation','teg_edge','cut_len_m','fix_len_m','delta_mm','free_len_m','cord_lanes','cross_mm','along_mm','note','src_date','src_gps','src_dir'];
+  const rows=[head]; let grandCut=0;
+  for(let i=0;i<N;i++){ const d=P[i], g=lastGrid&&lastGrid[i];
+    const edge=(g&&g.teg)?(g.teg.edge==='long'?'tate':'yoko'):'', lane=g?(g.span?(g.laneLo+'/'+g.laneHi):g.lane):'', cross=g?g.cross:'', along=g?g.along:'';
+    const E=(g&&g.teg&&g.teg.edge==='long')?120:90;      // 穴間隔mm（長辺120/短辺90）
+    const fixCm=Math.max(0,CEIL_CM-d.h)+state.tegSlack;  // 固定側=落差(高さ)+結び代
+    const deltaMm=Math.round(E*Math.sin(Math.abs(d.p)*Math.PI/180));  // 傾き用の差 ΔL≒E·sinθ
+    const freeCm=fixCm+deltaMm/10;                       // 自在側=固定+ΔL
+    const cutCm=fixCm+freeCm+E/10;                       // 1本の切り出し長=固定+自在+穴間隔
+    grandCut+=cutCm;
+    const cutM=(Math.round(cutCm)/100).toFixed(2), fixM=(Math.round(fixCm)/100).toFixed(2), freeM=(Math.round(freeCm)/100).toFixed(2);
+    rows.push([i+1,d.f,d.t,d.d,d.dl,d.p,d.h,d.r,edge,cutM,fixM,deltaMm,freeM,lane,cross,along,(d.n||'').replace(/\n/g,' '),d.st,d.sg,d.sd]); }
+  rows.push(['','','','','','','','','合計',(Math.round(grandCut)/100).toFixed(2)+'m','','','','','','','','','','']);
+  const csv=rows.map(function(r){return r.map(function(c){const s=String(c); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',');}).join('\n');
+  const blob=new Blob([String.fromCharCode(0xFEFF)+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='album-tegus-list.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+document.getElementById('csv').onclick=exportCSV;
+function exportPlanSVG(){
+  const pd=planData; if(!pd){ alert('先に「干渉(吊り)」表示にしてください'); return; }
+  const W=pd.Wt, H=pd.Ht, sc=1500/W, mL=95, mT=78, mR=45, mB=64;
+  const cw=W*sc, ch=H*sc, tw=mL+cw+mR, th=mT+ch+mB;
+  const X=function(a){return (mL+a*sc).toFixed(1);}, Y=function(c){return (mT+(H-c)*sc).toFixed(1);};
+  const esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');};
+  let g='<svg xmlns="http://www.w3.org/2000/svg" width="'+tw.toFixed(0)+'" height="'+th.toFixed(0)+'" viewBox="0 0 '+tw.toFixed(0)+' '+th.toFixed(0)+'" font-family="sans-serif">';
+  g+='<rect x="0" y="0" width="'+tw.toFixed(0)+'" height="'+th.toFixed(0)+'" fill="#ffffff"/>';
+  g+='<text x="'+mL+'" y="30" font-size="18" fill="#111">吊り平面図 ｜ トラス '+(W/1000).toFixed(2)+'×'+(H/1000).toFixed(2)+'m ・ 天井'+(CEIL_MM/1000).toFixed(1)+'m ・ 紐間隔'+pd.pitch+'mm</text>';
+  g+='<text x="'+mL+'" y="50" font-size="12" fill="#666">単位mm ／ 縦線=トラスの桟 ／ 橙線=紐 ／ △=固定・○=自在(番号) ／ 緑=テグス間隔 ／ 青=桟からの距離</text>';
+  // north arrow
+  g+='<g transform="translate('+(tw-32).toFixed(0)+',44)"><line x1="0" y1="20" x2="0" y2="-14" stroke="#111" stroke-width="1.5"/><polygon points="0,-22 -5,-11 5,-11" fill="#111"/><text x="0" y="36" font-size="12" fill="#111" text-anchor="middle">N</text></g>';
+  // truss outline
+  g+='<rect x="'+X(0)+'" y="'+Y(H)+'" width="'+cw.toFixed(1)+'" height="'+ch.toFixed(1)+'" fill="none" stroke="#999" stroke-width="1"/>';
+  // crossbars
+  for(let k=0;k<=pd.nCross;k++){ const a=k*pd.cellCross; g+='<line x1="'+X(a)+'" y1="'+Y(H)+'" x2="'+X(a)+'" y2="'+Y(0)+'" stroke="#d6d6d0" stroke-width="1"/>'; g+='<text x="'+X(a)+'" y="'+(mT+ch+16).toFixed(0)+'" font-size="10" fill="#999" text-anchor="middle">'+a+'</text>'; }
+  // lanes: cords + tegus + gaps
+  pd.lanes.forEach(function(ln){ const y=Y(ln.cross), yn=+y;
+    ln.segs.forEach(function(sg){ g+='<line x1="'+X(sg[0])+'" y1="'+y+'" x2="'+X(sg[1])+'" y2="'+y+'" stroke="#e08a1e" stroke-width="1.6"/>'; });
+    g+='<text x="'+(mL-8)+'" y="'+(yn+3).toFixed(1)+'" font-size="10" fill="#c07000" text-anchor="end">#'+ln.li+'</text>';
+    const ts=ln.tegus.slice().sort(function(a,b){return a.a-b.a;});
+    ts.forEach(function(t){ const x=X(t.a), xn=+x;
+      if(t.fix){ g+='<polygon points="'+x+','+(yn-3.6).toFixed(1)+' '+(xn-3.2).toFixed(1)+','+(yn+2.6).toFixed(1)+' '+(xn+3.2).toFixed(1)+','+(yn+2.6).toFixed(1)+'" fill="#c0392b"/>'; }
+      else { g+='<circle cx="'+x+'" cy="'+y+'" r="2.4" fill="#1d6fb8"/>'; }
+      g+='<text x="'+x+'" y="'+(yn-6).toFixed(1)+'" font-size="8" fill="#111" text-anchor="middle">'+t.no+'</text>'; });
+    ln.segs.forEach(function(sg){
+      const tin=ts.filter(function(t){return t.a>=sg[0]-1 && t.a<=sg[1]+1;});
+      if(!tin.length) return;
+      const pts=[]; for(let c=sg[0]; c<=sg[1]+0.5; c+=pd.cellCross) pts.push({a:c,bar:true}); tin.forEach(function(t){pts.push({a:t.a,bar:false});});
+      pts.sort(function(u,v){return u.a-v.a;});
+      for(let q=1;q<pts.length;q++){ const d=Math.round(pts[q].a-pts[q-1].a); if(d<1) continue;
+        const bar=pts[q].bar||pts[q-1].bar;
+        g+='<text x="'+X((pts[q].a+pts[q-1].a)/2)+'" y="'+(yn+11).toFixed(1)+'" font-size="8" fill="'+(bar?'#5a7fb8':'#2a8a6a')+'" text-anchor="middle">'+d+'</text>';
+      }
+    });
+  });
+  // scale bar 1000mm
+  const sb=(1000*sc).toFixed(1);
+  g+='<g transform="translate('+mL+','+(mT+ch+42).toFixed(0)+')"><line x1="0" y1="0" x2="'+sb+'" y2="0" stroke="#111" stroke-width="1.5"/><line x1="0" y1="-4" x2="0" y2="4" stroke="#111"/><line x1="'+sb+'" y1="-4" x2="'+sb+'" y2="4" stroke="#111"/><text x="'+(sb/2).toFixed(1)+'" y="15" font-size="11" fill="#111" text-anchor="middle">1000mm</text></g>';
+  g+='</svg>';
+  const blob=new Blob([g],{type:'image/svg+xml;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='album-plan.svg'; document.body.appendChild(a); a.click(); a.remove();
+}
+document.getElementById('plansvg').onclick=exportPlanSVG;
+
+addEventListener('resize',function(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+renderer.setSize(innerWidth,innerHeight);
+syncUI(); updateLegend(); build();
+(function loop(){ requestAnimationFrame(loop); controls.update();
+  for(let i=0;i<labelSprites.length;i++){ const sp=labelSprites[i], d=camera.position.distanceTo(sp.position), f=d*LABEL_K; sp.scale.set(sp.userData.bw*f, sp.userData.bh*f, 1); }
+  renderer.render(scene,camera); })();
+</script>
+</body>
+</html>
