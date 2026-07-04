@@ -33,7 +33,11 @@
   .src{display:inline-block;font-size:10px;padding:1px 6px;border-radius:5px;margin-left:6px}
   .src.exif{background:#143b2a;color:#5dcaa5}
   .src.manual{background:#3b2a14;color:#efb05d}
-  #panel .close{position:absolute;top:6px;right:8px;background:rgba(0,0,0,.5);border:none;color:#fff;font-size:16px;border-radius:6px;cursor:pointer;width:26px;height:26px}
+  #panel .close{position:absolute;top:6px;right:8px;background:rgba(0,0,0,.5);border:none;color:#fff;font-size:16px;border-radius:6px;cursor:pointer;width:26px;height:26px;z-index:2}
+  #panel .fn{cursor:pointer;user-select:none}
+  #panel .fn::after{content:' ▼';color:var(--sub);font-weight:400;font-size:11px}
+  #panel.exp .fn::after{content:' ▲'}
+  #panel:not(.exp) .ph, #panel:not(.exp) .note, #panel:not(.exp) table{display:none!important}
   #legend{bottom:12px;left:12px;padding:10px 12px;font-size:11px;color:var(--sub);max-width:260px}
   #legend .bar{height:8px;border-radius:4px;margin:5px 0 3px}
   #hint{bottom:12px;right:12px;padding:8px 12px;font-size:11px;color:var(--sub)}
@@ -492,7 +496,7 @@ document.getElementById('search').oninput=function(e){ const v=parseInt(e.target
 function srcBadge(v){ return '<span class="src '+(v==='exif'?'exif':'manual')+'">'+(v==='exif'?'EXIF':'手動')+'</span>'; }
 function showPanel(i){
   const d=P[i];
-  document.getElementById('panel').style.display='block';
+  const pn=document.getElementById('panel'); pn.style.display='block'; pn.classList.remove('exp');   // 既定は畳む
   const img=document.getElementById('pimg'); img.style.display='block'; img.src=d.f;
   img.onerror=function(){img.style.display='none';};
   document.getElementById('pfn').textContent='No.'+(i+1)+'  '+d.f;
@@ -516,6 +520,7 @@ function showPanel(i){
   document.getElementById('pmeta').innerHTML = rows.map(function(r){return '<tr><td class="k">'+r[0]+'</td><td>'+r[1]+'</td></tr>';}).join('');
 }
 document.getElementById('pclose').onclick=function(){ if(selected!==null) setSel(null); else document.getElementById('panel').style.display='none'; };
+document.getElementById('pfn').onclick=function(){ document.getElementById('panel').classList.toggle('exp'); };   // 見出しタップで展開/畳む
 
 function syncUI(){ document.getElementById('hangctl').style.display='block'; }
 function seg(id,key){ document.querySelectorAll('#'+id+' button').forEach(function(b){ b.onclick=function(){
