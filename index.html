@@ -488,7 +488,7 @@ function setSel(i, keepBox){
   selected=i;
   if(!keepBox){ const se=document.getElementById('search'); if(se) se.value=(i==null?'':(i+1)); }
   rebuild(false);                                             // 先に再描画して隣接間隔を算出
-  if(i==null || keepBox) document.getElementById('panel').style.display='none'; else showPanel(i);  // 検索(keepBox)ではパネルを出さない
+  if(i==null) document.getElementById('panel').style.display='none'; else showPanel(i);   // 検索・タップとも畳んだ状態で表示
 }
 addEventListener('keydown',function(e){ if(e.key==='Escape' && selected!==null) setSel(null); });
 document.getElementById('search').oninput=function(e){ const v=parseInt(e.target.value,10);
