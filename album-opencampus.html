@@ -7,30 +7,32 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: sans-serif; background: #222; overflow: hidden; color: #ddd; }
-    #canvas { display: block; }
-    #controls { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 12px;
-                border-radius: 8px; font-size: 12px; z-index: 10; max-width: 240px; }
-    #controls h2 { font-size: 14px; color: #fff; margin-bottom: 8px; }
-    .row { margin: 6px 0; }
-    #stat { font-size: 11px; color: #666; margin-top: 8px; line-height: 1.4; }
-    #info { position: fixed; bottom: 10px; right: 10px; background: rgba(0,0,0,0.8);
-             padding: 10px; border-radius: 6px; font-size: 12px; max-width: 300px; }
+    body { font-family: sans-serif; background: #1a1a1a; overflow: hidden; color: #ddd; }
+    canvas { display: block; }
+    #controls { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.85);
+                  padding: 14px; border-radius: 8px; font-size: 12px; z-index: 10; width: 240px; }
+    #controls h2 { font-size: 14px; color: #fff; margin-bottom: 10px; font-weight: bold; }
+    button { width: 100%; padding: 8px; margin: 8px 0; background: #1e40af; color: #fff;
+             border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    button:hover { background: #1e3a8a; }
+    #info { position: fixed; bottom: 10px; right: 10px; background: rgba(0,0,0,0.85);
+             padding: 10px 14px; border-radius: 6px; font-size: 11px; color: #aaa; line-height: 1.6; }
   </style>
 </head>
 <body>
   <div id="controls">
-    <h2>吊り展示</h2>
-    <div class="row">オープンキャンパス - 14枚</div>
-    <div id="stat"></div>
-    <div style="margin-top: 10px;"><button onclick="resetView()" style="width:100%; padding:6px; background:#1e40af; color:#fff; border:none; border-radius:4px; cursor:pointer;">視点をリセット</button></div>
+    <h2>吊り展示 - オープンキャンパス</h2>
+    <div style="font-size: 11px; color: #888; margin-bottom: 8px;">14枚 / 部材13本</div>
+    <button onclick="resetView()">視点をリセット</button>
+    <button onclick="autoRotate()">自動回転</button>
+    <div id="stat" style="margin-top: 10px; font-size: 10px; color: #666;"></div>
   </div>
-  <div id="info">高さ: 2800mm<br/>部材: 13本 / 写真: 14枚</div>
+  <div id="info">高さ: 2800mm<br/>カメラ: ホイール拡大縮小</div>
 
   <script>
 const TRUSS_H_MM = 2800;
 const TRUSS_H_CM = TRUSS_H_MM / 10;
-const SCALE = 10;
+const SCALE = 1;  // cm→px (小さめにして全体が見えるように)
 
 const NODES = {"P1": {"x": 109.2, "y": 13.6}, "P3": {"x": 19.2, "y": 55.8}, "L": {"x": 140.1, "y": 49.1}, "C": {"x": 200.0, "y": 50.0}, "R": {"x": 260.1, "y": 49.1}, "P2": {"x": 294.7, "y": 46.8}, "D": {"x": 139.6, "y": 95.0}, "P4": {"x": 24.7, "y": 93.3}, "P5": {"x": 138.9, "y": 149.0}};
 const EDGES = [{"a": "C", "b": "L", "len": 60}, {"a": "C", "b": "R", "len": 60}, {"a": "C", "b": "D", "len": 75}, {"a": "C", "b": "P2", "len": 95}, {"a": "D", "b": "L", "len": 46}, {"a": "D", "b": "P1", "len": 87}, {"a": "D", "b": "P4", "len": 115}, {"a": "D", "b": "P5", "len": 54}, {"a": "L", "b": "P1", "len": 47}, {"a": "L", "b": "P5", "len": 100}, {"a": "P1", "b": "P3", "len": 99}, {"a": "P2", "b": "R", "len": 35}, {"a": "P3", "b": "P4", "len": 38}];
@@ -38,97 +40,129 @@ const PHOTOS = [{"f": "P_20240421_110004.jpg", "t": "2024-04-21T11:00:04", "d": 
 const EDGE_PHOTOS = {"0": [{"photo_idx": 0, "t": 0.25}, {"photo_idx": 1, "t": 0.75}], "1": [{"photo_idx": 2, "t": 0.25}, {"photo_idx": 3, "t": 0.75}], "2": [{"photo_idx": 4, "t": 0.25}, {"photo_idx": 5, "t": 0.75}], "3": [{"photo_idx": 6, "t": 0.25}, {"photo_idx": 7, "t": 0.75}], "4": [{"photo_idx": 8, "t": 0.25}, {"photo_idx": 9, "t": 0.75}], "5": [{"photo_idx": 10, "t": 0.25}, {"photo_idx": 11, "t": 0.75}], "6": [{"photo_idx": 12, "t": 0.25}, {"photo_idx": 13, "t": 0.75}]};
 
 let scene, camera, renderer, world;
+let autoRotating = false;
 
 function init() {
+    // Scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
-    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 10000);
-    camera.position.set(150, 200, 250);
-    camera.lookAt(150, 0, 75);
+    scene.background = new THREE.Color(0x0f0f0f);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Camera - 中心を見るように調整
+    const centerX = (EDGES.length ? 150 : 0);
+    const centerZ = (EDGES.length ? 75 : 0);
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+    camera.position.set(centerX + 300, 300, centerZ + 300);
+    camera.lookAt(centerX, -TRUSS_H_CM * SCALE / 2, centerZ);
+
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
     world = new THREE.Group();
     scene.add(world);
 
-    // Lighting
-    const light = new THREE.DirectionalLight(0xffffff, 0.9);
-    light.position.set(100, 200, 100);
+    // Lights
+    const light = new THREE.DirectionalLight(0xffffff, 1.0);
+    light.position.set(200, 300, 200);
+    light.castShadow = true;
     scene.add(light);
-    scene.add(new THREE.AmbientLight(0x666666, 0.5));
+    scene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
 
-    // Draw truss edges
+    // Draw edges (truss)
     const edgeGeo = new THREE.BufferGeometry();
     const positions = [];
     const colors = [];
 
     for (let e of EDGES) {
         const n1 = NODES[e.a], n2 = NODES[e.b];
-        positions.push(n1.x * SCALE, -TRUSS_H_CM * SCALE, n1.y * SCALE);
-        positions.push(n2.x * SCALE, -TRUSS_H_CM * SCALE, n2.y * SCALE);
+        const y = -TRUSS_H_CM * SCALE / 2;
+        positions.push(n1.x * SCALE, y, n1.y * SCALE);
+        positions.push(n2.x * SCALE, y, n2.y * SCALE);
+        // Orange color
         colors.push(0.8, 0.55, 0.15, 0.8, 0.55, 0.15);
     }
 
     edgeGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
     edgeGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(colors), 3));
-    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 });
+    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 3 });
     const edgesMesh = new THREE.LineSegments(edgeGeo, edgeMat);
     world.add(edgesMesh);
 
-    // Draw nodes (small spheres)
+    // Draw nodes
     for (let [name, node] of Object.entries(NODES)) {
-        const geo = new THREE.SphereGeometry(4, 6, 6);
+        const geo = new THREE.SphereGeometry(5, 8, 8);
         const mat = new THREE.MeshBasicMaterial({ color: 0x1d6fb8 });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(node.x * SCALE, -TRUSS_H_CM * SCALE, node.y * SCALE);
+        const y = -TRUSS_H_CM * SCALE / 2;
+        mesh.position.set(node.x * SCALE, y, node.y * SCALE);
         world.add(mesh);
     }
 
-    // Draw photos (colored spheres on edges)
+    // Draw photos
     for (let [edge_idx_str, photos_list] of Object.entries(EDGE_PHOTOS)) {
         const edge_idx = parseInt(edge_idx_str);
         const edge = EDGES[edge_idx];
         const n1 = NODES[edge.a], n2 = NODES[edge.b];
+        const y = -TRUSS_H_CM * SCALE / 2;
 
         for (let ph of photos_list) {
             const photo_idx = ph.photo_idx;
             const t = ph.t;
-            const x = n1.x + (n2.x - n1.x) * t;
-            const z = n1.y + (n2.y - n1.y) * t;
-            const y = -TRUSS_H_CM * SCALE;
+            const x = (n1.x + (n2.x - n1.x) * t) * SCALE;
+            const z = (n1.y + (n2.y - n1.y) * t) * SCALE;
 
-            // Color by time: old (red) -> new (blue)
+            // Color by time
             const hue = (photo_idx / PHOTOS.length) * 0.6;
             const color = new THREE.Color().setHSL(hue, 0.8, 0.5);
 
-            const geo = new THREE.SphereGeometry(6, 8, 8);
+            const geo = new THREE.SphereGeometry(8, 8, 8);
             const mat = new THREE.MeshBasicMaterial({ color: color });
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.set(x, y, z);
-            mesh.userData = { photo_idx: photo_idx, edge_idx: edge_idx, t: t };
+            mesh.userData = { photo_idx: photo_idx };
             world.add(mesh);
         }
     }
 
-    // Basic wheel zoom
+    // Zoom control
     document.addEventListener("wheel", (e) => {
-        const s = Math.pow(0.95, e.deltaY > 0 ? 1 : -1);
-        camera.position.multiplyScalar(s);
-    }, { passive: true });
+        e.preventDefault();
+        const dir = camera.position.clone().normalize();
+        const dist = camera.position.length();
+        const newDist = dist * Math.pow(0.95, e.deltaY > 0 ? 1 : -1);
+        camera.position.copy(dir.multiplyScalar(newDist));
+    }, { passive: false });
 
     animate();
 }
 
 function resetView() {
-    camera.position.set(150, 200, 250);
-    camera.lookAt(150, 0, 75);
+    const centerX = 150;
+    const centerZ = 75;
+    camera.position.set(centerX + 300, 300, centerZ + 300);
+    camera.lookAt(centerX, -TRUSS_H_CM * SCALE / 2, centerZ);
+}
+
+function autoRotate() {
+    autoRotating = !autoRotating;
 }
 
 function animate() {
     requestAnimationFrame(animate);
+
+    if (autoRotating) {
+        const center = new THREE.Vector3(150, -TRUSS_H_CM * SCALE / 2, 75);
+        const radius = camera.position.distanceTo(center);
+        const angle = Math.atan2(camera.position.z - center.z, camera.position.x - center.x);
+        const newAngle = angle + 0.005;
+        camera.position.x = center.x + Math.cos(newAngle) * radius;
+        camera.position.z = center.z + Math.sin(newAngle) * radius;
+        camera.lookAt(center);
+    }
+
     renderer.render(scene, camera);
 }
 
