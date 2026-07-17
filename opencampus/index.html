@@ -10,7 +10,8 @@
   html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:"Segoe UI",system-ui,sans-serif;overflow:hidden}
   #c{position:fixed;inset:0;display:block}
   .ui{position:fixed;background:rgba(24,27,34,.92);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(6px)}
-  #controls{display:none;top:12px;left:12px;padding:12px 14px;width:252px;max-height:calc(100vh - 24px);overflow:auto}
+  #controls{top:12px;left:12px;padding:12px 14px;width:252px;max-height:calc(100vh - 24px);overflow:auto}
+  #controls>*:not(#row-search){display:none}
   #controls h1{font-size:14px;font-weight:600;margin:0 0 2px}
   #controls .sub{font-size:11px;color:var(--sub);margin-bottom:10px}
   .row{margin:9px 0}
@@ -65,7 +66,7 @@
 <div id="controls" class="ui">
   <h1>Album 3D Viewer</h1>
   <div class="sub">opencampus ・ <span id="count">0</span> 枚</div>
-  <div class="row"><input id="search" type="number" min="1" placeholder="番号で検索（例: 2）→ 他をグレーアウト" style="width:100%;padding:6px 8px;border:1px solid var(--line);background:#0f1115;color:var(--txt);border-radius:6px;font-size:12px"></div>
+  <div class="row" id="row-search"><input id="search" type="number" min="1" placeholder="番号で検索（例: 2）→ 他をグレーアウト" style="width:100%;padding:6px 8px;border:1px solid var(--line);background:#0f1115;color:var(--txt);border-radius:6px;font-size:12px"></div>
   <div class="row"><label>色</label><div class="seg" id="seg-color">
     <button data-v="id" class="on">識別</button>
     <button data-v="time">時間</button>
