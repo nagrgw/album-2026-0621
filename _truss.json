@@ -1,0 +1,34 @@
+{
+  "unit": "cm",
+  "height_mm": 2800,
+  "view": "top-down (plan)",
+  "grid_cm": 50,
+  "note": "点(ノード)を線で結んだ部材に写真を吊る。任意の2点間に線を追加してよい。x=右, y=下(平面), cm。orange=実測基準。",
+  "px_scale_cm_per_px": 0.625,
+  "nodes": {
+    "P1": {"x": 109.2, "y": 13.6},
+    "P3": {"x": 19.2,  "y": 55.8},
+    "L":  {"x": 140.1, "y": 49.1},
+    "C":  {"x": 200.0, "y": 50.0},
+    "R":  {"x": 260.1, "y": 49.1},
+    "P2": {"x": 294.7, "y": 46.8},
+    "D":  {"x": 139.6, "y": 95.0},
+    "P4": {"x": 24.7,  "y": 93.3},
+    "P5": {"x": 138.9, "y": 149.0}
+  },
+  "edges": [
+    {"a": "C", "b": "L",  "len_cm": 60,  "measured": true},
+    {"a": "C", "b": "R",  "len_cm": 60,  "measured": true},
+    {"a": "C", "b": "D",  "len_cm": 75,  "measured": true},
+    {"a": "C", "b": "P2", "len_cm": 95,  "measured": false},
+    {"a": "D", "b": "L",  "len_cm": 46,  "measured": false},
+    {"a": "D", "b": "P1", "len_cm": 87,  "measured": false},
+    {"a": "D", "b": "P4", "len_cm": 115, "measured": false},
+    {"a": "D", "b": "P5", "len_cm": 54,  "measured": false},
+    {"a": "L", "b": "P1", "len_cm": 47,  "measured": false},
+    {"a": "L", "b": "P5", "len_cm": 100, "measured": false},
+    {"a": "P1","b": "P3", "len_cm": 99,  "measured": false},
+    {"a": "P2","b": "R",  "len_cm": 35,  "measured": false},
+    {"a": "P3","b": "P4", "len_cm": 38,  "measured": false}
+  ]
+}

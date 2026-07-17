@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>オープンキャンパス 吊り展示</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; background: #1a1a1a; overflow: hidden; color: #ddd; }
+    canvas { display: block; }
+    #controls { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.85);
+                  padding: 14px; border-radius: 8px; font-size: 12px; z-index: 10; width: 240px; }
+    #controls h2 { font-size: 14px; color: #fff; margin-bottom: 10px; font-weight: bold; }
+    button { width: 100%; padding: 8px; margin: 8px 0; background: #1e40af; color: #fff;
+             border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    button:hover { background: #1e3a8a; }
+    #info { position: fixed; bottom: 10px; right: 10px; background: rgba(0,0,0,0.85);
+             padding: 10px 14px; border-radius: 6px; font-size: 11px; color: #aaa; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <h2>吊り展示 - オープンキャンパス</h2>
+    <div style="font-size: 11px; color: #888; margin-bottom: 8px;">14枚 / 部材13本</div>
+    <button onclick="resetView()">視点をリセット</button>
+    <button onclick="autoRotate()">自動回転</button>
+    <div id="stat" style="margin-top: 10px; font-size: 10px; color: #666;"></div>
+  </div>
+  <div id="info">高さ: 2800mm<br/>カメラ: ホイール拡大縮小</div>
+
+  <script>
+const TRUSS_H_MM = 2800;
+const TRUSS_H_CM = TRUSS_H_MM / 10;
+const SCALE = 1;  // cm→px (小さめにして全体が見えるように)
+
+const NODES = {"P1": {"x": 109.2, "y": 13.6}, "P3": {"x": 19.2, "y": 55.8}, "L": {"x": 140.1, "y": 49.1}, "C": {"x": 200.0, "y": 50.0}, "R": {"x": 260.1, "y": 49.1}, "P2": {"x": 294.7, "y": 46.8}, "D": {"x": 139.6, "y": 95.0}, "P4": {"x": 24.7, "y": 93.3}, "P5": {"x": 138.9, "y": 149.0}};
+const EDGES = [{"a": "C", "b": "L", "len": 60}, {"a": "C", "b": "R", "len": 60}, {"a": "C", "b": "D", "len": 75}, {"a": "C", "b": "P2", "len": 95}, {"a": "D", "b": "L", "len": 46}, {"a": "D", "b": "P1", "len": 87}, {"a": "D", "b": "P4", "len": 115}, {"a": "D", "b": "P5", "len": 54}, {"a": "L", "b": "P1", "len": 47}, {"a": "L", "b": "P5", "len": 100}, {"a": "P1", "b": "P3", "len": 99}, {"a": "P2", "b": "R", "len": 35}, {"a": "P3", "b": "P4", "len": 38}];
+const PHOTOS = [{"f": "P_20240421_110004.jpg", "t": "2024-04-21T11:00:04", "d": 316, "dl": "\u5317\u897f", "p": -64, "h": 108, "r": 90, "n": "\u307a\u3057\u3087\u3063\u3066\u611f\u3058 \u3067\u3082\u6cf3\u3044\u3066\u3044\u308b\u3088\u3046\u306b\u3082\u898b\u3048\u308b", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20240503_175953.jpg", "t": "2024-05-03T17:59:53", "d": 0, "dl": "", "p": 10, "h": null, "r": 90, "n": "\u306d\u305a\u307f\u3082\u305d\u3046\u8a00\u3063\u3066\u308b", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20240701_084719.jpg", "t": "2024-07-01T08:47:19", "d": 29, "dl": "\u5317\u6771", "p": 22, "h": 147, "r": 90, "n": "", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20240922_083227.jpg", "t": "2024-09-22T08:32:27", "d": 337, "dl": "\u5317\u897f", "p": -34, "h": 131, "r": 90, "n": "", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250120_005107.jpg", "t": "2025-01-20T00:51:07", "d": 37, "dl": "\u5317\u6771", "p": -27, "h": 128, "r": 90, "n": "\u7d42\u308f\u308a\u306f\u306a\u3044\u3002", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250216_082450.jpg", "t": "2025-02-16T08:24:50", "d": 354, "dl": "\u5317", "p": -70, "h": 149, "r": 90, "n": "\u307f\u3069\u308a\u306e\u7a93\u53e3\u306b\u3001\u30ab\u30ec\u30fc\u3092\u732e\u4e0a\u2015\u2015\u2015\u2015\u2015\u3002", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250218_230046.jpg", "t": "2025-02-18T23:00:46", "d": 37, "dl": "\u5317\u6771", "p": -54, "h": 99, "r": 0, "n": "\u6a4b\u672c\u306e\u3053\u3053\u304c\u30e4\u30d0\u30a4\uff01\u30da\u30c7\u30b9\u30c8\u30ea\u30a2\u30f3\u30c7\u30c3\u30ad\u306b\u5305\u4e01\u306e\u5916\u5305\u304c\u6563\u3089\u3070\u3063\u3066\u3044\u308b", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250401_114729.jpg", "t": "2025-04-01T11:47:29", "d": 51, "dl": "\u5317\u6771", "p": -25, "h": 137, "r": 90, "n": "\u690d\u6a39\u30d1\u30a4\u30ed\u30f3\n\u30d0\u30a4\u30ed\u30f3\u79d1\u30d1\u30a4\u30ed\u30f3\u76ee\u30d1\u30a4\u30ed\u30f3", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250522_134612.jpg", "t": "2025-05-22T13:46:12", "d": 303, "dl": "\u5317\u897f", "p": -67, "h": 73, "r": 90, "n": "\u3057\u3058\u307f\u6c41\u98df\u3063\u305f\u3084\u3064\u304c\u3044\u308b \u5f8c\u4e16\u306e\u4eba\u9593\u304c\u3053\u3053\u3092\u8c9d\u585a\u3060\u3068\u52d8\u9055\u3044\u3059\u308b\u306a", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250526_092948.jpg", "t": "2025-05-26T09:29:48", "d": 282, "dl": "\u897f", "p": -45, "h": 75, "r": 90, "n": "\u3075\u3066\u3076\u3066\u3057\u3044\u300c\u3059\u3066\u306a\u3044\u300d", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250716_203819.jpg", "t": "2025-07-16T20:38:19", "d": 30, "dl": "\u5317\u6771", "p": -78, "h": 122, "r": 90, "n": "\u306a\u3093\u304b\u304b\u308f\u3044\u3044\u3084\u3064\u3044\u308b\u306a", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250721_184422.jpg", "t": "2025-07-21T18:44:22", "d": 133, "dl": "\u5357\u6771", "p": -67, "h": null, "r": 90, "n": "\u3058\u3083\u304c\u3044\u3082\u3082\u65e5\u5098\u3092\u3055\u3059\u6642\u4ee3", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250722_091532.jpg", "t": "2025-07-22T09:15:32", "d": 302, "dl": "\u5317\u897f", "p": -8, "h": 133, "r": 90, "n": "\u843d\u3068\u3057\u7269 \u3068\u30de\u30a4\u30eb\u30c9\u306b\u8868\u73fe\u3057\u3066\u3044\u308b\u3051\u3069\u30d5\u30f3\u3068\u8a00\u3063\u3066\u3057\u307e\u3063\u3066\u3044\u308b", "sg": "", "st": "exif", "sd": "exif"}, {"f": "P_20250917_121811.jpg", "t": "2025-09-17T12:18:11", "d": 188, "dl": "\u5357", "p": -89, "h": 139, "r": 0, "n": "\u30c7\u30c3\u30b1\u30fc\u30fc\u30fc\u30fc\u30fc\u30ad\u30ce\u30b3\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01\u30c7\u30c3\u30ab\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01\uff01", "sg": "", "st": "exif", "sd": "exif"}];
+const EDGE_PHOTOS = {"0": [{"photo_idx": 0, "t": 0.25}, {"photo_idx": 1, "t": 0.75}], "1": [{"photo_idx": 2, "t": 0.25}, {"photo_idx": 3, "t": 0.75}], "2": [{"photo_idx": 4, "t": 0.25}, {"photo_idx": 5, "t": 0.75}], "3": [{"photo_idx": 6, "t": 0.25}, {"photo_idx": 7, "t": 0.75}], "4": [{"photo_idx": 8, "t": 0.25}, {"photo_idx": 9, "t": 0.75}], "5": [{"photo_idx": 10, "t": 0.25}, {"photo_idx": 11, "t": 0.75}], "6": [{"photo_idx": 12, "t": 0.25}, {"photo_idx": 13, "t": 0.75}]};
+
+let scene, camera, renderer, world;
+let autoRotating = false;
+
+function init() {
+    // Scene
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f0f0f);
+
+    // Camera - 中心を見るように調整
+    const centerX = (EDGES.length ? 150 : 0);
+    const centerZ = (EDGES.length ? 75 : 0);
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+    camera.position.set(centerX + 300, 300, centerZ + 300);
+    camera.lookAt(centerX, -TRUSS_H_CM * SCALE / 2, centerZ);
+
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    world = new THREE.Group();
+    scene.add(world);
+
+    // Lights
+    const light = new THREE.DirectionalLight(0xffffff, 1.0);
+    light.position.set(200, 300, 200);
+    light.castShadow = true;
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
+
+    // Draw edges (truss)
+    const edgeGeo = new THREE.BufferGeometry();
+    const positions = [];
+    const colors = [];
+
+    for (let e of EDGES) {
+        const n1 = NODES[e.a], n2 = NODES[e.b];
+        const y = -TRUSS_H_CM * SCALE / 2;
+        positions.push(n1.x * SCALE, y, n1.y * SCALE);
+        positions.push(n2.x * SCALE, y, n2.y * SCALE);
+        // Orange color
+        colors.push(0.8, 0.55, 0.15, 0.8, 0.55, 0.15);
+    }
+
+    edgeGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+    edgeGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(colors), 3));
+    const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 3 });
+    const edgesMesh = new THREE.LineSegments(edgeGeo, edgeMat);
+    world.add(edgesMesh);
+
+    // Draw nodes
+    for (let [name, node] of Object.entries(NODES)) {
+        const geo = new THREE.SphereGeometry(5, 8, 8);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x1d6fb8 });
+        const mesh = new THREE.Mesh(geo, mat);
+        const y = -TRUSS_H_CM * SCALE / 2;
+        mesh.position.set(node.x * SCALE, y, node.y * SCALE);
+        world.add(mesh);
+    }
+
+    // Draw photos
+    for (let [edge_idx_str, photos_list] of Object.entries(EDGE_PHOTOS)) {
+        const edge_idx = parseInt(edge_idx_str);
+        const edge = EDGES[edge_idx];
+        const n1 = NODES[edge.a], n2 = NODES[edge.b];
+        const y = -TRUSS_H_CM * SCALE / 2;
+
+        for (let ph of photos_list) {
+            const photo_idx = ph.photo_idx;
+            const t = ph.t;
+            const x = (n1.x + (n2.x - n1.x) * t) * SCALE;
+            const z = (n1.y + (n2.y - n1.y) * t) * SCALE;
+
+            // Color by time
+            const hue = (photo_idx / PHOTOS.length) * 0.6;
+            const color = new THREE.Color().setHSL(hue, 0.8, 0.5);
+
+            const geo = new THREE.SphereGeometry(8, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: color });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, y, z);
+            mesh.userData = { photo_idx: photo_idx };
+            world.add(mesh);
+        }
+    }
+
+    // Zoom control
+    document.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const dir = camera.position.clone().normalize();
+        const dist = camera.position.length();
+        const newDist = dist * Math.pow(0.95, e.deltaY > 0 ? 1 : -1);
+        camera.position.copy(dir.multiplyScalar(newDist));
+    }, { passive: false });
+
+    animate();
+}
+
+function resetView() {
+    const centerX = 150;
+    const centerZ = 75;
+    camera.position.set(centerX + 300, 300, centerZ + 300);
+    camera.lookAt(centerX, -TRUSS_H_CM * SCALE / 2, centerZ);
+}
+
+function autoRotate() {
+    autoRotating = !autoRotating;
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    if (autoRotating) {
+        const center = new THREE.Vector3(150, -TRUSS_H_CM * SCALE / 2, 75);
+        const radius = camera.position.distanceTo(center);
+        const angle = Math.atan2(camera.position.z - center.z, camera.position.x - center.x);
+        const newAngle = angle + 0.005;
+        camera.position.x = center.x + Math.cos(newAngle) * radius;
+        camera.position.z = center.z + Math.sin(newAngle) * radius;
+        camera.lookAt(center);
+    }
+
+    renderer.render(scene, camera);
+}
+
+window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+window.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>
