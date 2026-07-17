@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Album 3D Viewer — opencampus</title>
+<style>
+  :root{ --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --txt:#e7e9ee; --sub:#9aa3b2; --accent:#378ADD; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:"Segoe UI",system-ui,sans-serif;overflow:hidden}
+  #c{position:fixed;inset:0;display:block}
+  .ui{position:fixed;background:rgba(24,27,34,.92);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(6px)}
+  #controls{top:12px;left:12px;padding:12px 14px;width:252px;max-height:calc(100vh - 24px);overflow:auto}
+  #controls h1{font-size:14px;font-weight:600;margin:0 0 2px}
+  #controls .sub{font-size:11px;color:var(--sub);margin-bottom:10px}
+  .row{margin:9px 0}
+  .row label{font-size:11px;color:var(--sub);display:block;margin-bottom:4px}
+  .seg{display:flex;gap:4px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:52px;font-size:11px;padding:5px 6px;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:6px;cursor:pointer}
+  .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  input[type=range]{width:100%}
+  .arow{display:flex;align-items:center;gap:6px;margin:4px 0}
+  .arow .al{font-size:11px;color:var(--sub);min-width:78px}
+  .arow select,.arow input[type=range]{flex:1;font-size:11px}
+  .chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt);cursor:pointer}
+  #hangctl{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}
+  #hangctl .ht{font-size:11px;color:var(--accent);margin-bottom:4px}
+  #panel{top:12px;right:12px;width:300px;max-height:calc(100vh - 24px);overflow:auto;padding:0;display:none}
+  #panel .ph{width:100%;display:block;background:#000;border-radius:10px 10px 0 0}
+  #panel .body{padding:12px 14px}
+  #panel .fn{font-size:13px;font-weight:600;word-break:break-all;margin-bottom:8px}
+  #panel .note{font-size:13px;line-height:1.5;white-space:pre-wrap;margin:8px 0 10px;color:#f2d98a}
+  #panel table{width:100%;font-size:12px;border-collapse:collapse}
+  #panel td{padding:3px 0;vertical-align:top}
+  #panel td.k{color:var(--sub);width:64px}
+  .src{display:inline-block;font-size:10px;padding:1px 6px;border-radius:5px;margin-left:6px}
+  .src.exif{background:#143b2a;color:#5dcaa5}
+  .src.manual{background:#3b2a14;color:#efb05d}
+  .src.none{background:#33261a;color:#9aa3b2}
+  #panel .close{position:absolute;top:6px;right:8px;background:rgba(0,0,0,.5);border:none;color:#fff;font-size:16px;border-radius:6px;cursor:pointer;width:26px;height:26px;z-index:2}
+  #panel .fn{cursor:pointer;user-select:none}
+  #panel .fn::after{content:' ▼';color:var(--sub);font-weight:400;font-size:11px}
+  #panel.exp .fn::after{content:' ▲'}
+  #panel:not(.exp) .ph, #panel:not(.exp) .note, #panel:not(.exp) table{display:none!important}
+  #legend{bottom:12px;left:12px;padding:10px 12px;font-size:11px;color:var(--sub);max-width:260px}
+  #legend .bar{height:8px;border-radius:4px;margin:5px 0 3px}
+  #hint{bottom:12px;right:12px;padding:8px 12px;font-size:11px;color:var(--sub)}
+  #count{color:var(--accent);font-weight:600}
+  #stat{font-size:11px;color:var(--sub);margin-top:4px;line-height:1.5}
+  @media (max-width:640px){
+    #controls{width:46vw;min-width:150px;max-width:220px;padding:9px 10px;font-size:11px;max-height:calc(100vh - 16px)}
+    #controls h1{font-size:12px}
+    #panel{top:auto;bottom:10px;left:10px;right:10px;width:auto;max-height:48vh}
+    #panel .ph{max-height:28vh;object-fit:contain}
+    #legend{max-width:42vw;padding:6px 8px;font-size:10px}
+    #hint{display:none}
+    .seg button{min-width:0;padding:5px 4px}
+    #search{font-size:16px}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="controls" class="ui">
+  <h1>Album 3D Viewer</h1>
+  <div class="sub">opencampus ・ <span id="count">0</span> 枚</div>
+  <div class="row"><input id="search" type="number" min="1" placeholder="番号で検索（例: 2）→ 他をグレーアウト" style="width:100%;padding:6px 8px;border:1px solid var(--line);background:#0f1115;color:var(--txt);border-radius:6px;font-size:12px"></div>
+  <div class="row"><label>色</label><div class="seg" id="seg-color">
+    <button data-v="id" class="on">識別</button>
+    <button data-v="time">時間</button>
+    <button data-v="dir">方位</button>
+    <button data-v="pitch">仰角</button>
+  </div></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="path" checked> 撮影順の軌跡を表示</label></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="ground" checked> 床グリッドを表示</label></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="numbers" checked> 通し番号を表示</label></div>
+
+  <div id="hangctl">
+    <div class="ht">実測トラス（固定・9点13辺＋推定2辺）</div>
+    <div class="sub" style="font-size:10px;margin:2px 0 6px">添付SVGの実測値から復元 ・ 紫破線=C-P5/R-P5(座標から推定の追加線) ・ 天井2800mm ・ 写真90×120mm（すべて固定）・ 点を結ぶ線に直接吊る ・ P3/P4側=北</div>
+    <div class="row"><label class="chk"><input type="checkbox" id="trussShow" checked> トラスの線を表示</label></div>
+    <div class="ht" style="margin-top:6px">吊り方式</div>
+    <div class="row"><div class="seg" id="seg-mode">
+      <button data-v="cross" class="on">線をまたぐ</button><button data-v="line">同一線</button></div></div>
+    <div class="sub" style="font-size:10px;margin:2px 0 4px">またぐ=2本のテグスを別々の線に張り、真のGPS位置と向きを両立（このトラスでは半数で位置↔向きが二律背反）</div>
+    <div class="row" id="row-facePri"><label>向き優先 <span id="facePri-v">25</span>%（0=GPS位置を最優先／100=方位を重視・位置は妥協）</label><input type="range" id="facePri" min="0" max="100" step="5" value="25"></div>
+    <div class="ht" style="margin-top:6px">テグスの組み方（自由に調整）</div>
+    <div class="row" id="row-strad"><label>支点間隔 <span id="strad-v">180</span> mm（同一線で△固定と○自在を離す幅）</label><input type="range" id="strad" min="0" max="800" step="10" value="180"></div>
+    <div class="row" id="row-spread"><label>分散度 <span id="spread-v">35</span>%（0=GPS実位置そのまま／100=辺内で均等配置）</label><input type="range" id="spread" min="0" max="100" step="5" value="35"></div>
+    <div class="row"><label>写真の最小間隔 <span id="minGap-v">66</span> mm（0=制限なし・重なり許容）</label><input type="range" id="minGap" min="0" max="400" step="2" value="66"></div>
+    <div class="row"><label>結び代 / 本 <span id="tegSlack-v">0</span> cm</label><input type="range" id="tegSlack" min="0" max="100" step="1" value="0"></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="strings" checked> テグスを表示</label></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="cordShow" checked> 接点(△固定/○自在)を表示</label></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="spacingShow" checked> 写真どうしの間隔(mm)を表示</label></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="nodeDist" checked> 点→テグスの距離(mm)を表示</label></div>
+    <div id="cordstat" style="font-size:11px;color:var(--sub);margin-top:2px;line-height:1.5"></div>
+    <div class="row"><button id="csv" style="width:100%;padding:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:6px;cursor:pointer">テグス＋辺の一覧をCSV出力</button></div>
+    <div class="row"><button id="plansvg" style="width:100%;padding:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:6px;cursor:pointer">平面図をSVGで書き出し</button></div>
+    <div id="stat"></div>
+  </div>
+
+  <div class="row"><button style="width:100%;padding:6px;border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:6px;cursor:pointer" id="reset">視点をリセット</button></div>
+</div>
+
+<div id="panel" class="ui">
+  <button class="close" id="pclose">×</button>
+  <img class="ph" id="pimg" alt="">
+  <div class="body">
+    <div class="fn" id="pfn"></div>
+    <div class="note" id="pnote"></div>
+    <table><tbody id="pmeta"></tbody></table>
+    <div id="aov" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #333">
+      <div style="font-size:11px;color:var(--sub);margin-bottom:4px">アンカー手動調整（この写真だけ）</div>
+      <div class="arow"><span class="al">固定△ 辺</span><select id="aov-e1"></select></div>
+      <div class="arow"><span class="al">△ 位置 <span id="aov-t1v">50</span>%</span><input type="range" id="aov-t1" min="0" max="100" step="1" value="50"></div>
+      <div class="arow"><span class="al">自在○ 辺</span><select id="aov-e2"></select></div>
+      <div class="arow"><span class="al">○ 位置 <span id="aov-t2v">50</span>%</span><input type="range" id="aov-t2" min="0" max="100" step="1" value="50"></div>
+      <button id="aov-reset" style="margin-top:4px;font-size:11px">自動に戻す</button>
+    </div>
+  </div>
+</div>
+
+<div id="legend" class="ui">
+  <div id="leg-title">時間（撮影順）</div>
+  <div class="bar" id="leg-bar"></div>
+  <div id="leg-range" style="display:flex;justify-content:space-between"><span id="leg-a"></span><span id="leg-b"></span></div>
+</div>
+<div id="hint" class="ui">ドラッグ=回転 ・ ホイール=ズーム ・ 右ドラッグ=平行移動 ・ 写真/接点をクリックで選択（他はグレー）・ Escor空クリックで解除</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ===== 実測トラス（添付SVG points_distances.svg 由来） =====
+// SVGのpx座標と距離ラベルの最小二乗フィットで縮尺を算出（全13辺で 0.6249〜0.6266cm/px と高い整合性）
+const PXK = 6.2509; // mm / px
+const PXPT = {
+  L:[289.4,152.8], C:[385.3,154.2], R:[481.4,152.8], D:[288.6,226.2],
+  P1:[240.0,96.0], P2:[536.8,149.0], P3:[96.0,163.4], P4:[104.8,223.5], P5:[287.5,312.6]
+};
+const NODE = {}; for(const k in PXPT){ NODE[k]=[PXPT[k][0]*PXK, PXPT[k][1]*PXK]; }
+// C・R・P2は実物では一直線の同一部材（C-R 600mm + R-P2 350mm = C-P2 950mm と寸分違わず一致）。
+// ピクセル採寸由来のR座標には数°の測点ズレがあるため、C-P2の直線上に距離比で補正配置する。
+(function straightenCRP2(){
+  const ratio=600/950, C=NODE.C, P2=NODE.P2;
+  NODE.R=[C[0]+(P2[0]-C[0])*ratio, C[1]+(P2[1]-C[1])*ratio];
+})();
+function nodeDist(a,b){ const A=NODE[a],B=NODE[b]; return Math.round(Math.hypot(A[0]-B[0],A[1]-B[1])); }
+const EDGES = [ // [pointA, pointB, 距離mm, 種別]（'given'=SVGラベル値そのまま／'estimated'=座標から算出した追加の斜め線）
+  ['C','D',750,'given'],['C','L',600,'given'],['C','R',600,'given'],['C','P2',950,'given'],
+  ['D','L',460,'given'],['D','P1',870,'given'],['D','P4',1150,'given'],['D','P5',540,'given'],
+  ['L','P1',470,'given'],['L','P5',1000,'given'],['P1','P3',990,'given'],['P2','R',350,'given'],['P3','P4',380,'given'],
+  ['C','P5',nodeDist('C','P5'),'estimated'],['R','P5',nodeDist('R','P5'),'estimated']
+];
+const CEIL_MM = 2800, CEIL_CM = CEIL_MM/10;
+const TILT_THRESH_DEG = 12; // 抑角がこの範囲内(ほぼ水平)なら'yoko'、超えたら'tate'（現地資料表記用・吊り方自体は常に短辺中央2点）
+const PAPER_LONG = 120; // 写真の長辺(mm) 90×120
+
+// ===== opencampusアルバム（公開版：GPS座標・メモ本文は除去し、トラス空間の座標(mm)のみ収録） =====
+const RAW=[
+{f:"P_20240421_110004.jpg",dt:"2024-04-21T11:00:04",mx:645.72,mz:1811.76,d:316,dl:"北西",p:-64,h:108,n:"",r:90,sd:"manual"},
+{f:"P_20240503_175953.jpg",dt:"2024-05-03T17:59:53",mx:2023.61,mz:1948.88,d:null,dl:null,p:10,h:null,n:"",r:90,sd:"none"},
+{f:"P_20240701_084719.jpg",dt:"2024-07-01T08:47:19",mx:1093.90,mz:1689.97,d:29,dl:"北東",p:22,h:147,n:"",r:90,sd:"manual"},
+{f:"P_20240922_083227.jpg",dt:"2024-09-22T08:32:27",mx:1880.08,mz:1438.79,d:337,dl:"北西",p:-34,h:131,n:"",r:90,sd:"manual"},
+{f:"P_20250120_005107.jpg",dt:"2025-01-20T00:51:07",mx:3245.89,mz:671.24,d:37,dl:"北東",p:-27,h:128,n:"",r:90,sd:"manual"},
+{f:"P_20250216_082450.jpg",dt:"2025-02-16T08:24:50",mx:3300.70,mz:924.65,d:354,dl:"北",p:-70,h:50,n:"",r:90,sd:"manual"},
+{f:"P_20250218_230046.jpg",dt:"2025-02-18T23:00:46",mx:3203.47,mz:964.46,d:37,dl:"北東",p:-54,h:99,n:"",r:0,sd:"manual"},
+{f:"P_20250401_114729.jpg",dt:"2025-04-01T11:47:29",mx:2345.16,mz:1345.23,d:51,dl:"北東",p:-25,h:137,n:"",r:90,sd:"manual"},
+{f:"P_20250522_134612.jpg",dt:"2025-05-22T13:46:12",mx:2744.47,mz:1157.42,d:303,dl:"北西",p:-67,h:73,n:"",r:90,sd:"manual"},
+{f:"P_20250526_092948.jpg",dt:"2025-05-26T09:29:48",mx:1955.33,mz:1433.57,d:282,dl:"西",p:-45,h:75,n:"",r:90,sd:"manual"},
+{f:"P_20250716_203819.jpg",dt:"2025-07-16T20:38:19",mx:966.06,mz:1715.77,d:30,dl:"北東",p:-78,h:122,n:"",r:90,sd:"manual"},
+{f:"P_20250721_184422.jpg",dt:"2025-07-21T18:44:22",mx:1419.26,mz:1078.38,d:133,dl:"南東",p:-67,h:null,n:"",r:90,sd:"manual"},
+{f:"P_20250722_091532.jpg",dt:"2025-07-22T09:15:32",mx:3270.36,mz:1011.13,d:302,dl:"北西",p:-8,h:133,n:"",r:90,sd:"manual"},
+{f:"P_20250917_121811.jpg",dt:"2025-09-17T12:18:11",mx:1768.78,mz:1355.77,d:188,dl:"南",p:-89,h:60,n:"",r:0,sd:"manual"}
+];
+const N = RAW.length;
+document.getElementById('count').textContent = N;
+
+function hhmm(s){ return s.slice(11,16); }
+const DIRS=['北','北東','東','南東','南','南西','西','北西'];
+function dirLabel(deg){ return DIRS[Math.round((((deg%360)+360)%360)/45)%8]; }
+const heightsKnown = RAW.map(function(r){return r.h;}).filter(function(v){return v!=null;});
+const HDEF = Math.round(heightsKnown.reduce(function(a,b){return a+b;},0)/heightsKnown.length);
+
+const P = RAW.map(function(r){
+  const hasDir=(r.d!=null), deg=hasDir?r.d:0;
+  const hEst=(r.h==null), h=hEst?HDEF:r.h;
+  return {f:r.f, t:hhmm(r.dt), mx:r.mx, mz:r.mz, d:deg, dl:(r.dl||dirLabel(deg)),
+    p:r.p, h:h, r:r.r, n:r.n, sg:'exif', sd:(hasDir?r.sd:'none'), st:'exif',
+    hEst:hEst, dEst:!hasDir};
+});
+
+// トラス空間の座標範囲
+const NODEVALS=Object.keys(NODE).map(function(k){return NODE[k];});
+const TMINX=Math.min.apply(null,NODEVALS.map(function(p){return p[0];})), TMAXX=Math.max.apply(null,NODEVALS.map(function(p){return p[0];}));
+const TMINZ=Math.min.apply(null,NODEVALS.map(function(p){return p[1];})), TMAXZ=Math.max.apply(null,NODEVALS.map(function(p){return p[1];}));
+const TCX=(TMINX+TMAXX)/2, TCZ=(TMINZ+TMAXZ)/2, TBW=TMAXX-TMINX, TBH=TMAXZ-TMINZ;
+
+// 実際の北方向：P3・P4側が北という指定から、中心→P3-P4中点のベクトルを北とする（SVGの生座標系、y=下方向）
+const NORTH_MM=[ (NODE.P3[0]+NODE.P4[0])/2-TCX, (NODE.P3[1]+NODE.P4[1])/2-TCZ ];
+// シーン座標（x=mm.x基準、z=-mm.y基準）に変換したときの、回転前の「北」の向き
+const N_UX=NORTH_MM[0], N_UZ=-NORTH_MM[1];
+// 方位(0°=北)で計算しているlookVec()は -Z を北と仮定しているため、実際の北がその向きに一致するようシーン全体を回転させる角度
+const SCENE_ROT = -Math.PI/2 - Math.atan2(N_UZ, N_UX);
+function rotScene(ux,uz){
+  const c=Math.cos(SCENE_ROT), s=Math.sin(SCENE_ROT);
+  return [ux*c-uz*s, ux*s+uz*c];
+}
+
+// トラス北/東の単位ベクトル（NODE mm空間）— 方位→向きベクトルの基底
+const _NL=Math.hypot(NORTH_MM[0],NORTH_MM[1])||1;
+const NHAT=[NORTH_MM[0]/_NL, NORTH_MM[1]/_NL];
+const EHAT=[NHAT[1], -NHAT[0]];
+// 方位(0°=北,90°=東)→水平の「正対方向」単位ベクトル（NODE mm空間）
+function facingVec(deg){ const a=deg*Math.PI/180; return [Math.cos(a)*NHAT[0]+Math.sin(a)*EHAT[0], Math.cos(a)*NHAT[1]+Math.sin(a)*EHAT[1]]; }
+
+// 各辺の始点A・方向D（NODE mm）を先に用意
+const EDGE_A=EDGES.map(function(e){return NODE[e[0]];});
+const EDGE_D=EDGES.map(function(e){return [NODE[e[1]][0]-NODE[e[0]][0], NODE[e[1]][1]-NODE[e[0]][1]];});
+// 写真iを2本の辺にまたいで吊る最良解を、全辺ペアの重み付き最小二乗で求める（位置²＋向き²＋開き²を最小化）。
+// facePri: 向き優先度(0=位置最優先 … 1=向きをかなり重視)。
+function computeCross(i, facePri){
+  const Tx=P[i].mx, Tz=P[i].mz, f=facingVec(P[i].d);
+  const wF=0.5+6.0*facePri;      // 向き残差の重み
+  const wL=0.02;                 // 接点間隔(開き)を軽く抑制（暴れ防止）
+  let best=null;
+  for(let a=0;a<EDGES.length;a++){ for(let b=a+1;b<EDGES.length;b++){
+    const A1=EDGE_A[a], D1=EDGE_D[a], A2=EDGE_A[b], D2=EDGE_D[b];
+    const D1f=D1[0]*f[0]+D1[1]*f[1], D2f=D2[0]*f[0]+D2[1]*f[1];
+    // 残差 r_k = p_k*t1 + q_k*t2 + c_k
+    // 位置X/Z（中点−T）, 向き((a2-a1)·f=垂直ズレ), 開きX/Z(a2-a1)
+    const P_=[0.5*D1[0], 0.5*D1[1], -D1f*wF, -D1[0]*wL, -D1[1]*wL];
+    const Q_=[0.5*D2[0], 0.5*D2[1],  D2f*wF,  D2[0]*wL,  D2[1]*wL];
+    const C_=[0.5*(A1[0]+A2[0])-Tx, 0.5*(A1[1]+A2[1])-Tz, ((A2[0]-A1[0])*f[0]+(A2[1]-A1[1])*f[1])*wF, (A2[0]-A1[0])*wL, (A2[1]-A1[1])*wL];
+    let saa=0,sab=0,sbb=0,sac=0,sbc=0;
+    for(let k=0;k<5;k++){ saa+=P_[k]*P_[k]; sab+=P_[k]*Q_[k]; sbb+=Q_[k]*Q_[k]; sac+=P_[k]*C_[k]; sbc+=Q_[k]*C_[k]; }
+    const det=saa*sbb-sab*sab; if(Math.abs(det)<1e-9) continue;
+    let t1=(-sac*sbb+sbc*sab)/det, t2=(-sbc*saa+sac*sab)/det;
+    t1=Math.max(0,Math.min(1,t1)); t2=Math.max(0,Math.min(1,t2));
+    const a1x=A1[0]+t1*D1[0], a1z=A1[1]+t1*D1[1], a2x=A2[0]+t2*D2[0], a2z=A2[1]+t2*D2[1];
+    const mx=(a1x+a2x)/2, mz=(a1z+a2z)/2;
+    const posErr2=(mx-Tx)*(mx-Tx)+(mz-Tz)*(mz-Tz);
+    const faceRes=(a2x-a1x)*f[0]+(a2z-a1z)*f[1];
+    const sep=Math.hypot(a2x-a1x,a2z-a1z);
+    if(sep<30) continue;         // 接点が近すぎ＝2点吊りにならない
+    const cost=posErr2 + wF*wF*faceRes*faceRes + wL*wL*sep*sep;
+    if(!best||cost<best.cost) best={cost:cost, a:a, b:b, t1:t1, t2:t2, a1:[a1x,a1z], a2:[a2x,a2z], M:[mx,mz],
+      posErr:Math.sqrt(posErr2), faceDeg:Math.abs(Math.asin(Math.max(-1,Math.min(1,faceRes/(sep||1))))*180/Math.PI), sep:sep};
+  }}
+  if(!best) return null;
+  return {P1:best.a1, P2:best.a2, M:best.M, e1:best.a, t1:best.t1, e2:best.b, t2:best.t2,
+    posErr:best.posErr, faceDeg:best.faceDeg, sep:best.sep};
+}
+
+// 手動指定の辺+位置(0..1)から、computeCrossと同じ形の解を作る
+function crossFromEdges(i, e1i,t1, e2i,t2){
+  const A1=EDGE_A[e1i],D1=EDGE_D[e1i],A2=EDGE_A[e2i],D2=EDGE_D[e2i];
+  const a1=[A1[0]+t1*D1[0],A1[1]+t1*D1[1]], a2=[A2[0]+t2*D2[0],A2[1]+t2*D2[1]];
+  const M=[(a1[0]+a2[0])/2,(a1[1]+a2[1])/2], f=facingVec(P[i].d);
+  const posErr=Math.hypot(M[0]-P[i].mx,M[1]-P[i].mz), sep=Math.hypot(a2[0]-a1[0],a2[1]-a1[1]);
+  const faceRes=(a2[0]-a1[0])*f[0]+(a2[1]-a1[1])*f[1];
+  const faceDeg=Math.abs(Math.asin(Math.max(-1,Math.min(1,faceRes/(sep||1))))*180/Math.PI);
+  return {P1:a1,P2:a2,M:M,e1:e1i,t1:t1,e2:e2i,t2:t2,posErr:posErr,faceDeg:faceDeg,sep:sep};
+}
+
+// 最も近い辺へ投影（点対線分の最短距離）→ 各写真がどの辺に乗るか決める
+function ptSegProj(px,pz,ax,az,bx,bz){
+  const dx=bx-ax, dz=bz-az, len2=dx*dx+dz*dz||1;
+  let t=((px-ax)*dx+(pz-az)*dz)/len2; t=Math.max(0,Math.min(1,t));
+  return {t:t, d:Math.hypot(px-(ax+t*dx), pz-(az+t*dz))};
+}
+P.forEach(function(p,i){
+  let best=null;
+  EDGES.forEach(function(e,ei){
+    const A=NODE[e[0]], B=NODE[e[1]];
+    const r=ptSegProj(p.mx,p.mz,A[0],A[1],B[0],B[1]);
+    if(!best||r.d<best.d) best={ei:ei,t:r.t,d:r.d};
+  });
+  p.ei=best.ei; p.t0=best.t; p.i=i;
+});
+
+function edgePoint(ei,along){
+  const e=EDGES[ei], A=NODE[e[0]], B=NODE[e[1]], len=e[2];
+  const t=Math.max(0,Math.min(1,along/len));
+  return [A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t];
+}
+
+let edgeGroups={}; // ei -> [photo index...]（along昇順）
+function layoutEdges(strad,spread,minGap){
+  edgeGroups={};
+  P.forEach(function(p){ (edgeGroups[p.ei]=edgeGroups[p.ei]||[]).push(p.i); });
+  const s=Math.max(0,Math.min(100,spread))/100; // 0=GPS実位置そのまま ／ 1=均等配置
+  Object.keys(edgeGroups).forEach(function(k){
+    const ei=+k, ids=edgeGroups[k], len=EDGES[ei][2];
+    ids.sort(function(a,b){return P[a].t0-P[b].t0;});
+    const marginMM=Math.min(len*0.45, strad/2+PAPER_LONG/2+20);
+    const usable=Math.max(0,len-2*marginMM);
+    ids.forEach(function(idx,j){
+      const evenT=(ids.length===1)?0.5:(j/(ids.length-1));
+      const trueT=P[idx].t0; // GPS位置から投影した実際の沿い比率(0〜1)
+      const t=trueT*(1-s)+evenT*s;
+      P[idx].along=marginMM+t*usable;
+    });
+    // 最小間隔を確保（minGap=0なら制限なし＝GPS実位置・重なりも許容）
+    if(ids.length>1 && minGap>0){
+      for(let iter=0; iter<60; iter++){
+        let moved=false;
+        for(let j=1;j<ids.length;j++){
+          const a=P[ids[j-1]], b=P[ids[j]], gap=b.along-a.along;
+          if(gap<minGap){ const push=(minGap-gap)/2; a.along=Math.max(marginMM,a.along-push); b.along=Math.min(marginMM+usable,b.along+push); moved=true; }
+        }
+        if(!moved) break;
+      }
+    }
+  });
+}
+
+const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('c'), antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1115);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 1000000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+scene.add(new THREE.AmbientLight(0xffffff,0.95));
+const dlight = new THREE.DirectionalLight(0xffffff,0.45); dlight.position.set(1,2,1); scene.add(dlight);
+
+let state = {color:'id', path:true, ground:true, strings:true, trussShow:true, mode:'cross', facePri:25,
+             strad:180, spread:35, minGap:66, tegSlack:0, numbers:true, cordShow:true, spacingShow:true, nodeDist:true, aov:{}};
+// アンカー手動調整。既定＝ユーザー調整済み平面図(SVG)から復元した配置。
+// 辺index: 0C-D 1C-L 2C-R 3C-P2 4D-L 5D-P1 6D-P4 7D-P5 8L-P1 9L-P5 10P1-P3 11P2-R 12P3-P4 13C-P5 14R-P5
+const AOV_DEFAULT={
+  0:{e1:12,t1:0.721,e2:6,t2:0.75},   1:{e1:13,t1:0.85,e2:14,t2:0.922}, 2:{e1:5,t1:0.6,e2:12,t2:0.721},
+  3:{e1:0,t1:0.771,e2:13,t2:0.33},   4:{e1:2,t1:1,e2:3,t2:0.885},      5:{e1:11,t1:0.314,e2:2,t2:1},
+  6:{e1:2,t1:1,e2:11,t2:0.451},      7:{e1:13,t1:0.29,e2:2,t2:0.47},   8:{e1:2,t1:0.27,e2:14,t2:0.52},
+  9:{e1:0,t1:0.511,e2:13,t2:0.45},   10:{e1:5,t1:0.72,e2:12,t2:0.85},  11:{e1:7,t1:0.63,e2:10,t2:0.28},
+  12:{e1:3,t1:0.71,e2:2,t2:1},       13:{e1:13,t1:0.14,e2:6,t2:0.031}
+};
+// 保存/復元（再読込しても消えない）。localStorage優先、無ければSVG既定配置。
+function saveAov(){ try{ localStorage.setItem('oc_aov', JSON.stringify(state.aov)); }catch(e){} }
+(function loadAov(){ let s=null; try{ s=localStorage.getItem('oc_aov'); }catch(e){}
+  state.aov = s ? (JSON.parse(s)||{}) : JSON.parse(JSON.stringify(AOV_DEFAULT)); })();
+let world = new THREE.Group(); scene.add(world);
+
+function colorOf(i){
+  const c = new THREE.Color();
+  if(state.color==='id'){ const h=((i*137.508)%360)/360, l=[0.42,0.55,0.66][i%3]; c.setHSL(h,0.70,l); }
+  else if(state.color==='time'){ c.copy(new THREE.Color(0x1d9e75)).lerp(new THREE.Color(0xd85a30), i/(N-1)); }
+  else if(state.color==='dir'){ c.setHSL(((P[i].d%360)+360)%360/360, 0.62, 0.55); }
+  else { const t=Math.max(0,Math.min(1,(P[i].p+90)/180)); c.copy(new THREE.Color(0x378add)).lerp(new THREE.Color(0xe24b4a), t); }
+  return c;
+}
+function lookVec(i){
+  const az=P[i].d*Math.PI/180, p=P[i].p*Math.PI/180;
+  return new THREE.Vector3(Math.sin(az)*Math.cos(p), Math.sin(p), -Math.cos(az)*Math.cos(p)).normalize();
+}
+
+let nodeMeshes=[], labelSprites=[], selected=null, planData=null;
+const GRAY=0x39414f, LABEL_K=0.0035;
+let doFrameNext=true;
+function clearWorld(){ while(world.children.length){ const o=world.children.pop(); if(o.geometry)o.geometry.dispose(); if(o.material&&o.material.dispose)o.material.dispose(); } nodeMeshes=[]; labelSprites=[]; }
+function build(){ clearWorld(); buildHang(); }
+
+function addPath(pts,op){
+  const g=new THREE.BufferGeometry().setFromPoints(pts);
+  const colors=[]; for(let i=0;i<N;i++){const c=colorOf(i); colors.push(c.r,c.g,c.b);}
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
+  world.add(new THREE.Line(g, new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:op})));
+}
+const LABEL_MEASURE_CTX=document.createElement('canvas').getContext('2d');
+function addLabelAt(txt,x,y,z,scale,color){
+  LABEL_MEASURE_CTX.font='bold 34px sans-serif';
+  const textW=LABEL_MEASURE_CTX.measureText(String(txt)).width;
+  const H=64, W=Math.max(128, Math.ceil(textW)+28);   // 文字幅に応じてキャンバス幅を可変にし、見切れを防止
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const cx=cv.getContext('2d');
+  cx.font='bold 34px sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
+  cx.lineWidth=6; cx.strokeStyle='rgba(0,0,0,0.85)'; cx.strokeText(txt,W/2,H/2);
+  cx.fillStyle=color||'#9aa3b2'; cx.fillText(txt,W/2,H/2);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv), transparent:true, opacity:0.9}));
+  const bw=scale*2*(W/128), bh=scale;
+  sp.position.set(x,y,z); sp.userData={bw:bw, bh:bh}; sp.scale.set(bw,bh,1); world.add(sp); labelSprites.push(sp);
+}
+function tegLineTo(top,bot,color,opacity){
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints([top.clone(), bot.clone()]), new THREE.LineBasicMaterial({color:(color==null?0x9aa3b2:color), transparent:true, opacity:(opacity==null?0.6:opacity)}));
+}
+function heightRuler(x,z,S){
+  const top=new THREE.Vector3(x, CEIL_MM*S, z), bot=new THREE.Vector3(x,0,z);
+  world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([bot,top]), new THREE.LineBasicMaterial({color:0x5dcaa5, transparent:true, opacity:0.6})));
+  for(let cm=0; cm<=CEIL_CM+1; cm+=50){ addLabelAt(cm+'cm', x-40, cm*10*S, z, 9, '#5dcaa5'); }
+}
+
+let lastGrid=[];
+function buildHang(){
+  layoutEdges(state.strad, state.spread, state.minGap);
+  const S=320/Math.max(TBW,TBH);
+  const ceilU=CEIL_MM*S;
+  const toScene=function(mm){ const ux=mm[0]-TCX, uz=-(mm[1]-TCZ), r=rotScene(ux,uz); return [r[0]*S, r[1]*S]; };
+  const anySel=(selected!==null);
+
+  if(state.ground){
+    world.add(new THREE.GridHelper(Math.max(TBW,TBH)*S*1.15, 24, 0x2a2f3a, 0x20242c));
+    heightRuler(toScene(NODE.P3)[0]-60, toScene(NODE.P3)[1], S);
+    const rr=Math.max(TBW,TBH)*S*0.62;
+    addLabelAt('N',0,4,-rr,16,'#9aa3b2'); addLabelAt('S',0,4,rr,16,'#9aa3b2');
+    addLabelAt('E',rr,4,0,16,'#9aa3b2'); addLabelAt('W',-rr,4,0,16,'#9aa3b2');
+  }
+  if(state.trussShow){
+    const tp=[];
+    EDGES.filter(function(e){return e[3]!=='estimated';}).forEach(function(e){
+      const A=toScene(NODE[e[0]]), B=toScene(NODE[e[1]]);
+      tp.push(new THREE.Vector3(A[0],ceilU,A[1]), new THREE.Vector3(B[0],ceilU,B[1]));
+    });
+    world.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(tp), new THREE.LineBasicMaterial({color:0x6b86b3, transparent:true, opacity:0.85})));
+    EDGES.filter(function(e){return e[3]==='estimated';}).forEach(function(e){
+      const A=toScene(NODE[e[0]]), B=toScene(NODE[e[1]]);
+      const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(A[0],ceilU,A[1]), new THREE.Vector3(B[0],ceilU,B[1])]);
+      const line=new THREE.Line(geo, new THREE.LineDashedMaterial({color:0xb87fe3, transparent:true, opacity:0.85, dashSize:20*S, gapSize:12*S}));
+      line.computeLineDistances(); world.add(line);
+    });
+    Object.keys(NODE).forEach(function(k){ const s=toScene(NODE[k]); addLabelAt(k, s[0], ceilU+16, s[1], 9, '#6b86b3'); });
+  }
+
+  let tegTotalCm=0, lineCnt=0;
+  let gapMin=1e9, gapMax=0, gapSum=0, gapCount=0, nearPairs=0;
+  lastGrid=new Array(N);
+
+  const crossMode=(state.mode==='cross');
+  const crossSol=new Array(N);
+  if(crossMode){ for(let i=0;i<N;i++){ const ov=state.aov[i];
+    crossSol[i]= ov ? crossFromEdges(i, ov.e1,ov.t1, ov.e2,ov.t2) : computeCross(i, state.facePri/100); } }
+  const edgeAnchors={};                              // ei -> [{along(mm from nodeA), i, kind:'fix'|'free'}]
+  const addAnchor=function(ei,along,i,kind){ (edgeAnchors[ei]=edgeAnchors[ei]||[]).push({along:along, i:i, kind:kind}); };
+  let crossPosSum=0, crossFaceSum=0, crossCnt=0, crossFallback=0;
+
+  const scenePos=[];
+  for(let i=0;i<N;i++){
+    const strad=state.strad, half=strad/2;
+    let centerMM, fixMM, freeMM, hg;
+    if(crossMode && crossSol[i]){
+      const c=crossSol[i], e1=EDGES[c.e1], e2=EDGES[c.e2];
+      centerMM=c.M; fixMM=c.P1; freeMM=c.P2;
+      const a1=Math.round(c.t1*e1[2]), a2=Math.round(c.t2*e2[2]);
+      addAnchor(c.e1,a1,i,'fix'); addAnchor(c.e2,a2,i,'free');
+      hg={mode:'cross', t1:c.t1, t2:c.t2, ov:!!state.aov[i],
+        e1:c.e1, edge1:e1[0]+'-'+e1[1], n1A:e1[0], n1B:e1[1], len1:e1[2], est1:(e1[3]==='estimated'), a1FromA:a1, a1FromB:e1[2]-a1,
+        e2:c.e2, edge2:e2[0]+'-'+e2[1], n2A:e2[0], n2B:e2[1], len2:e2[2], est2:(e2[3]==='estimated'), a2FromA:a2, a2FromB:e2[2]-a2,
+        posErr:Math.round(c.posErr), faceDeg:+c.faceDeg.toFixed(1), sep:Math.round(c.sep)};
+      crossPosSum+=c.posErr; crossFaceSum+=c.faceDeg; crossCnt++;
+    } else {
+      if(crossMode) crossFallback++;
+      const ei=P[i].ei, e=EDGES[ei], along=P[i].along;
+      const alongFix=Math.max(0,Math.min(e[2], along-half));
+      const alongFree=Math.max(0,Math.min(e[2], along+half));
+      centerMM=edgePoint(ei,along); fixMM=edgePoint(ei,alongFix); freeMM=edgePoint(ei,alongFree);
+      addAnchor(ei,Math.round(alongFix),i,'fix'); addAnchor(ei,Math.round(alongFree),i,'free');
+      hg={mode:'line', ei:ei, edgeName:e[0]+'-'+e[1], nodeA:e[0], nodeB:e[1], edgeLen:e[2], edgeEst:(e[3]==='estimated'),
+        along:Math.round(along), alongFix:Math.round(alongFix), alongFree:Math.round(alongFree)};
+    }
+    const cS=toScene(centerMM), fS=toScene(fixMM), gS=toScene(freeMM);
+    const Y=P[i].h*10*S;
+    const v=new THREE.Vector3(cS[0],Y,cS[1]); scenePos.push(v);
+    const cLo=new THREE.Vector3(fS[0],ceilU,fS[1]), cHi=new THREE.Vector3(gS[0],ceilU,gS[1]);
+
+    // 短辺の中央2点で吊る：長辺(120)をスロープ(上下)方向、短辺(90)を水平に配置
+    const pw=PAPER_LONG*0.75*S, ph=PAPER_LONG*S;  // 幅=短辺90(水平) ／ 縦=長辺120(スロープ)
+    const isSel=(selected===i), dimO=(anySel&&!isSel);
+    const baseHex=colorOf(i).getHex();
+    const mat=new THREE.MeshBasicMaterial({color:(dimO?GRAY:baseHex), side:THREE.DoubleSide, transparent:true, opacity:(dimO?0.14:0.96)});
+    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph), mat); mesh.position.copy(v);
+    const lv=lookVec(i); mesh.lookAt(v.clone().add(lv));
+    mesh.userData={i}; world.add(mesh); nodeMeshes.push(mesh);
+    let up=new THREE.Vector3(0,1,0); up.addScaledVector(lv,-up.dot(lv)); if(up.lengthSq()<1e-6)up.set(0,0,1); up.normalize();
+    let right=new THREE.Vector3().crossVectors(up,lv); if(right.lengthSq()<1e-6)right.set(1,0,0); right.normalize();
+    const topE=v.clone().add(up.clone().multiplyScalar(ph*0.5));
+    // 2本のテグスは2つの短辺の中央に取り付く。長手方向(上下スロープ)に120mm離れる→高さが違う→
+    // テグス長が変わり、片方が短くなることで撮影時の抑角(見下ろし角)を再現。
+    const uH=up.clone().multiplyScalar(ph*0.5);
+    const eTop=v.clone().add(uH), eBot=v.clone().sub(uH);  // 上短辺・下短辺の中央
+    const attLo=(eTop.distanceToSquared(cLo)<=eBot.distanceToSquared(cLo))?eTop:eBot; // △に近い側
+    const attHi=(attLo===eTop)?eBot:eTop;
+
+    const legA=attLo.distanceTo(cLo)/S/10, legB=attHi.distanceTo(cHi)/S/10; // 取り付け点→接点の実長(cm)
+    const edgeCm=PAPER_LONG/10;  // 2つの短辺中央の間隔=長辺120mm
+    const teg={type:2, edge:'shortMid', edgeCm:edgeCm, a:legA, b:legB, total:edgeCm+legA+legB+2*state.tegSlack};
+
+    const lineHex=isSel?0xffffff:(dimO?GRAY:baseHex), lineOp=dimO?0.1:0.8;
+    if(state.strings){
+      world.add(tegLineTo(attLo,cLo,lineHex,lineOp));
+      world.add(tegLineTo(attHi,cHi,lineHex,lineOp));
+      world.add(tegLineTo(eTop,eBot,lineHex,lineOp)); // 写真の長手方向(2短辺中央を結ぶ中心線)
+    }
+    lineCnt+=2; tegTotalCm+=teg.total;
+
+    if(state.cordShow){
+      const conHex=isSel?0xffffff:(dimO?GRAY:baseHex);
+      const cmat=new THREE.MeshBasicMaterial({color:conHex, transparent:true, opacity:(dimO?0.18:1)});
+      const fixGeo=new THREE.ConeGeometry(Math.max(0.8,15*S), Math.max(1.6,30*S), 4);
+      const conGeo=new THREE.SphereGeometry(Math.max(0.5,12*S),8,8);
+      const selBig=Math.max(1.4,32*S);
+      const fg=isSel?new THREE.ConeGeometry(selBig*1.1, selBig*2.2, 4):fixGeo;
+      const fm=new THREE.Mesh(fg,cmat); fm.position.copy(cLo); fm.userData={i:i}; world.add(fm); nodeMeshes.push(fm);
+      const sgeo=isSel?new THREE.SphereGeometry(selBig,10,10):conGeo;
+      const sm=new THREE.Mesh(sgeo,cmat); sm.position.copy(cHi); sm.userData={i:i}; world.add(sm); nodeMeshes.push(sm);
+    }
+    const showN=isSel||(selected===null&&state.numbers);
+    if(showN){ const nCol=isSel?'#ffffff':('#'+baseHex.toString(16).padStart(6,'0')), nS=isSel?12:7;
+      [cLo,cHi].forEach(function(pt){ addLabelAt(String(i+1), pt.x, pt.y+2, pt.z, nS, nCol); });
+      addLabelAt(String(i+1), topE.x, topE.y+3, topE.z, isSel?13:8, nCol); }
+
+    hg.teg=teg; lastGrid[i]=hg;
+  }
+
+  // 辺ごとの接点：間隔統計＋間隔ラベル（緑）＋点→外側接点の距離（青）。両モード共通でedgeAnchors基準。
+  Object.keys(edgeAnchors).forEach(function(k){
+    const ei=+k, e=EDGES[ei], arr=edgeAnchors[k].slice().sort(function(a,b){return a.along-b.along;});
+    const marks=[0].concat(arr.map(function(a){return a.along;})).concat([e[2]]);
+    for(let q=1;q<marks.length;q++){ const d=marks[q]-marks[q-1]; if(d<1) continue;
+      gapSum+=d; gapCount++; if(d<gapMin)gapMin=d; if(d>gapMax)gapMax=d;
+      if(d<PAPER_LONG && q>1 && q<marks.length-1) nearPairs++; }
+    if(state.spacingShow && !anySel){
+      for(let q=1;q<arr.length;q++){ const d=Math.round(arr[q].along-arr[q-1].along); if(d<1) continue;
+        const pm=toScene(edgePoint(ei,(arr[q].along+arr[q-1].along)/2));
+        addLabelAt(d+'', pm[0], ceilU+3, pm[1], 6, '#7fe3c4'); }
+    }
+    if(state.nodeDist && !anySel && arr.length){
+      const dA=arr[0].along, dB=e[2]-arr[arr.length-1].along;
+      const pA=toScene(edgePoint(ei, dA/2)); addLabelAt(e[0]+'→'+dA, pA[0], ceilU+9, pA[1], 6.5, '#9fb4dd');
+      const pB=toScene(edgePoint(ei, (arr[arr.length-1].along+e[2])/2)); addLabelAt(e[1]+'→'+dB, pB[0], ceilU+9, pB[1], 6.5, '#9fb4dd');
+    }
+  });
+
+  // 選択中：トラスの点→テグス接点までの距離を白ラベルで強調（モード別）
+  if(selected!==null && lastGrid[selected]){
+    const g=lastGrid[selected];
+    if(g.mode==='cross'){
+      const p1=toScene(edgePoint(g.e1, g.a1FromA/2));
+      addLabelAt(g.n1A+'→△ '+g.a1FromA, p1[0], ceilU+12, p1[1], 8.5, '#ffffff');
+      const p2=toScene(edgePoint(g.e2, g.a2FromA/2));
+      addLabelAt(g.n2A+'→○ '+g.a2FromA, p2[0], ceilU+12, p2[1], 8.5, '#ffffff');
+      g.nbrStr='位置ズレ '+g.posErr+'mm ／ 向きズレ '+g.faceDeg+'° ／ 接点間 '+g.sep+'mm';
+    } else {
+      const ei=g.ei, e=EDGES[ei];
+      const pFix=toScene(edgePoint(ei, g.alongFix/2));
+      addLabelAt(e[0]+'→固定△ '+g.alongFix, pFix[0], ceilU+12, pFix[1], 8.5, '#ffffff');
+      const pFree=toScene(edgePoint(ei, (g.alongFree+e[2])/2));
+      addLabelAt(e[1]+'→自在○ '+(e[2]-g.alongFree), pFree[0], ceilU+12, pFree[1], 8.5, '#ffffff');
+      const pSpan=toScene(edgePoint(ei, (g.alongFix+g.alongFree)/2));
+      addLabelAt('△→○ '+(g.alongFree-g.alongFix), pSpan[0], ceilU+18, pSpan[1], 8.5, '#ffd36b');
+      const others=(edgeAnchors[ei]||[]).filter(function(a){return a.i!==selected;}).map(function(a){return a.along;});
+      const my=g.along, left=others.filter(function(a){return a<my;}), right=others.filter(function(a){return a>my;});
+      const lStr=left.length ? ('左 '+Math.round(my-Math.max.apply(null,left))+'mm') : ('端('+e[0]+') '+my+'mm');
+      const rStr=right.length ? ('右 '+Math.round(Math.min.apply(null,right)-my)+'mm') : ('端('+e[1]+') '+(e[2]-my)+'mm');
+      g.nbrStr=lStr+' ／ '+rStr;
+    }
+  }
+
+  if(state.path) addPath(scenePos,0.28);
+  const cel=document.getElementById('cordstat');
+  if(cel){
+    const modeLine = crossMode
+      ? '吊り方式 <b style="color:#b87fe3">線をまたぐ</b>（位置と向きを両立）・ 向き優先 <b style="color:#5dcaa5">'+state.facePri+'%</b><br>'
+        +'再現ズレ: 位置 平均 <b style="color:#5dcaa5">'+(crossCnt?Math.round(crossPosSum/crossCnt):0)+'mm</b> ／ 向き 平均 <b style="color:#5dcaa5">'+(crossCnt?(crossFaceSum/crossCnt).toFixed(1):0)+'°</b>'+(crossFallback?(' ・ 同一線ﾌｫｰﾙﾊﾞｯｸ '+crossFallback+'枚'):'')+'<br>'
+      : '吊り方式 <b style="color:#efb05d">同一線</b> ・ 支点間隔 <b style="color:#5dcaa5">'+state.strad+'mm</b> ・ 分散度 <b style="color:#5dcaa5">'+state.spread+'%</b>（0=GPS実位置 100=均等）<br>';
+    cel.innerHTML='実測トラス 9点'+EDGES.length+'辺（推定2含む） ・ 天井'+(CEIL_MM/1000).toFixed(1)+'m<br>'
+    + modeLine
+    +'接点の間隔: 最小 <b style="color:#7fe3c4">'+(gapCount?Math.round(gapMin):0)+'</b> / 平均 '+(gapCount?Math.round(gapSum/gapCount):0)+' / 最大 '+Math.round(gapMax)+' mm<br>'
+    +'<span style="color:#ffd36b">●</span>接点＋番号 ／ <span style="color:#7fe3c4">◇</span>接点間隔 ／ <span style="color:#9fb4dd">◇</span>点→テグス距離'
+    +(nearPairs?('<br><span style="color:#e24b4a">近接(&lt;紙幅) '+nearPairs+'ペア</span>'+(crossMode?' → 向き優先を下げると位置がばらけて緩和':' → 支点間隔を詰めるか写真を移動して回避')):''); }
+  document.getElementById('stat').innerHTML='テグス総長: <b style="color:#5dcaa5">'+(tegTotalCm/100).toFixed(2)+' m</b> ・ テグス本数計 '+lineCnt+'（全て2テグス）<br>吊り方: 2つの短辺の中央に取り付け（長さ差で抑角を再現）・ 実寸';
+  if(doFrameNext) frame(scenePos);
+}
+
+function frame(pos){
+  const box=new THREE.Box3().setFromPoints(pos);
+  const c=box.getCenter(new THREE.Vector3()), s=box.getSize(new THREE.Vector3());
+  const r=Math.max(s.x,s.y,s.z)||320;
+  controls.target.copy(c);
+  camera.position.set(c.x + r*0.9, c.y + r*0.7, c.z + r*1.1);
+  camera.near=Math.max(0.1,r/300); camera.far=r*60; camera.updateProjectionMatrix();
+}
+function rebuild(df){ doFrameNext=(df!==false); build(); }
+
+function updateLegend(){
+  const t=document.getElementById('leg-title'), bar=document.getElementById('leg-bar'),
+        a=document.getElementById('leg-a'), b=document.getElementById('leg-b');
+  if(state.color==='id'){ t.textContent='識別色（隣どうしを別色に）'; bar.style.background='linear-gradient(90deg,#e24b4a,#e2a24b,#7fe24b,#4be2b6,#4b8fe2,#a24be2,#e24b8f)'; a.textContent='番号ごとに'; b.textContent='別の色'; }
+  else if(state.color==='time'){ t.textContent='時間（撮影順）'; bar.style.background='linear-gradient(90deg,#1d9e75,#d85a30)'; a.textContent=P[0].t; b.textContent=P[N-1].t; }
+  else if(state.color==='dir'){ t.textContent='方位（撮影方向）'; bar.style.background='linear-gradient(90deg,hsl(0,62%,55%),hsl(90,62%,55%),hsl(180,62%,55%),hsl(270,62%,55%),hsl(360,62%,55%))'; a.textContent='色相=方位'; b.textContent='0°→360°'; }
+  else { t.textContent='仰角（見上げ/見下ろし）'; bar.style.background='linear-gradient(90deg,#378add,#e24b4a)'; a.textContent='-90° 下'; b.textContent='上 +90°'; }
+}
+
+const ray=new THREE.Raycaster(), mouse=new THREE.Vector2(); let down=null;
+renderer.domElement.addEventListener('pointerdown',function(e){down=[e.clientX,e.clientY];});
+renderer.domElement.addEventListener('pointerup',function(e){
+  if(!down) return; const dx=e.clientX-down[0], dy=e.clientY-down[1]; down=null;
+  if(Math.hypot(dx,dy)>5) return;
+  mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(mouse,camera);
+  const hit=ray.intersectObjects(nodeMeshes,false);
+  if(hit.length) setSel(hit[0].object.userData.i);
+  else if(selected!==null) setSel(null);
+});
+function setSel(i, keepBox){
+  selected=i;
+  if(!keepBox){ const se=document.getElementById('search'); if(se) se.value=(i==null?'':(i+1)); }
+  rebuild(false);
+  if(i==null) document.getElementById('panel').style.display='none'; else showPanel(i);
+}
+addEventListener('keydown',function(e){ if(e.key==='Escape' && selected!==null) setSel(null); });
+document.getElementById('search').oninput=function(e){ const v=parseInt(e.target.value,10);
+  if(v>=1 && v<=N) setSel(v-1, true); else if(selected!==null) setSel(null, true); };
+function srcBadge(v){ return '<span class="src '+(v==='exif'?'exif':(v==='none'?'none':'manual'))+'">'+(v==='exif'?'EXIF':(v==='none'?'不明':'手動'))+'</span>'; }
+function showPanel(i){
+  const d=P[i];
+  const pn=document.getElementById('panel'); pn.style.display='block'; pn.classList.remove('exp');
+  const img=document.getElementById('pimg'); img.style.display='block'; img.src=d.f;
+  img.onerror=function(){img.style.display='none';};
+  document.getElementById('pfn').textContent='No.'+(i+1)+'  '+d.f;
+  const note=document.getElementById('pnote'); note.textContent=d.n||''; note.style.display=d.n?'block':'none';
+  const g=lastGrid[i], teg=g.teg;
+  const legHi=Math.max(teg.a,teg.b), legLo=Math.min(teg.a,teg.b);
+  const tegStr='2テグス 短辺中央吊り '+legLo.toFixed(0)+'(短)＋'+legHi.toFixed(0)+'(長)＋中心線'+teg.edgeCm.toFixed(0)+' = '+teg.total.toFixed(0)+'cm ／ 長さ差 '+(legHi-legLo).toFixed(0)+'cm(抑角)';
+  const rows=[ ['No.', (i+1)+' / '+N], ['日時', d.t + srcBadge(d.st)], ['方位', d.d+'° '+d.dl + srcBadge(d.sd) + (d.dEst?'<div style="font-size:10px;color:var(--sub);margin-top:2px">※方位データなし・北(0°)で仮設定</div>':'')],
+    ['仰角', d.p+'°'], ['高さ', d.h+' cm'+(d.hEst?'<span class="src none">推定</span>':'')], ['回転', d.r+'°'], ['位置', '座標(公開版では非表示)' + srcBadge(d.sg)],
+    ['テグス', tegStr] ];
+  if(g.mode==='cross'){
+    // またぐ：2本の接点それぞれの「点からの距離」（現地でメジャーを当てる位置）
+    rows.push(['固定△の辺', g.edge1+(g.est1?'<span class="src none">推定線</span>':'')+'（全長'+g.len1+'mm）']);
+    rows.push(['△ 点から', '<b style="color:#e7e9ee">'+g.n1A+'</b>から <b style="color:#5dcaa5">'+g.a1FromA+'</b> ／ <b style="color:#e7e9ee">'+g.n1B+'</b>から '+g.a1FromB+' mm']);
+    rows.push(['自在○の辺', g.edge2+(g.est2?'<span class="src none">推定線</span>':'')+'（全長'+g.len2+'mm）']);
+    rows.push(['○ 点から', '<b style="color:#e7e9ee">'+g.n2A+'</b>から <b style="color:#5dcaa5">'+g.a2FromA+'</b> ／ <b style="color:#e7e9ee">'+g.n2B+'</b>から '+g.a2FromB+' mm']);
+    rows.push(['接点間', '<b style="color:#ffd36b">'+g.sep+' mm</b>（△↔○ 直線）']);
+    rows.push(['再現ズレ', '位置 <b style="color:'+(g.posErr>200?'#e24b4a':'#5dcaa5')+'">'+g.posErr+'mm</b> ／ 向き <b style="color:'+(g.faceDeg>15?'#e24b4a':'#5dcaa5')+'">'+g.faceDeg+'°</b>']);
+  } else {
+    const gridStr='辺 '+g.edgeName+(g.edgeEst?'<span class="src none">推定線</span>':'')+'（全長'+g.edgeLen+'mm）・ 沿い'+g.along+'mm ・ 固定△＋自在○';
+    const fixStr='<b style="color:#e7e9ee">'+g.nodeA+'</b>から <b style="color:#5dcaa5">'+g.alongFix+'</b> ／ <b style="color:#e7e9ee">'+g.nodeB+'</b>から '+(g.edgeLen-g.alongFix)+' mm';
+    const freeStr='<b style="color:#e7e9ee">'+g.nodeA+'</b>から '+g.alongFree+' ／ <b style="color:#e7e9ee">'+g.nodeB+'</b>から <b style="color:#5dcaa5">'+(g.edgeLen-g.alongFree)+'</b> mm';
+    const spanStr='<b style="color:#ffd36b">'+(g.alongFree-g.alongFix)+' mm</b>（△固定 → ○自在）';
+    rows.push(['結束辺', gridStr], ['点→固定△', fixStr], ['点→自在○', freeStr], ['△→○間隔', spanStr]);
+  }
+  if(g.mode!=='cross' && g.nbrStr) rows.push(['間隔', g.nbrStr]);
+  document.getElementById('pmeta').innerHTML = rows.map(function(r){return '<tr><td class="k">'+r[0]+'</td><td>'+r[1]+'</td></tr>';}).join('');
+  syncAov(i, g);
+}
+// アンカー手動調整UIを選択写真に同期
+function edgeOptions(sel){ return EDGES.map(function(e,ei){return '<option value="'+ei+'">'+e[0]+'-'+e[1]+(e[3]==='estimated'?'(推定)':'')+'</option>';}).join(''); }
+function syncAov(i, g){
+  const box=document.getElementById('aov');
+  if(!g || g.mode!=='cross'){ box.style.display='none'; return; }
+  box.style.display='block';
+  const e1=document.getElementById('aov-e1'), e2=document.getElementById('aov-e2');
+  if(!e1.dataset.filled){ e1.innerHTML=edgeOptions(); e2.innerHTML=edgeOptions(); e1.dataset.filled=e2.dataset.filled='1'; }
+  e1.value=g.e1; e2.value=g.e2;
+  const t1=Math.round(g.t1*100), t2=Math.round(g.t2*100);
+  document.getElementById('aov-t1').value=t1; document.getElementById('aov-t1v').textContent=t1;
+  document.getElementById('aov-t2').value=t2; document.getElementById('aov-t2v').textContent=t2;
+  document.getElementById('aov-reset').style.opacity=g.ov?1:0.5;
+}
+function aovProjT(ei,tx,tz){ const A=EDGE_A[ei],D=EDGE_D[ei],l2=D[0]*D[0]+D[1]*D[1]||1;
+  return Math.max(0,Math.min(1,((tx-A[0])*D[0]+(tz-A[1])*D[1])/l2)); }
+function aovPt(ei,t){ const A=EDGE_A[ei],D=EDGE_D[ei]; return [A[0]+t*D[0],A[1]+t*D[1]]; }
+function aovApply(fitWhich){
+  if(selected===null) return;
+  const i=selected;
+  let e1=+document.getElementById('aov-e1').value, t1=+document.getElementById('aov-t1').value/100;
+  let e2=+document.getElementById('aov-e2').value, t2=+document.getElementById('aov-t2').value/100;
+  // 辺を変えた点は、GPS位置に中点が合うよう自動フィット（もう片方は固定）
+  if(fitWhich===1){ const a2=aovPt(e2,t2); t1=aovProjT(e1, 2*P[i].mx-a2[0], 2*P[i].mz-a2[1]);
+    document.getElementById('aov-t1').value=Math.round(t1*100); document.getElementById('aov-t1v').textContent=Math.round(t1*100); }
+  if(fitWhich===2){ const a1=aovPt(e1,t1); t2=aovProjT(e2, 2*P[i].mx-a1[0], 2*P[i].mz-a1[1]);
+    document.getElementById('aov-t2').value=Math.round(t2*100); document.getElementById('aov-t2v').textContent=Math.round(t2*100); }
+  state.aov[i]={e1:e1,t1:t1,e2:e2,t2:t2}; saveAov();
+  rebuild(false);
+}
+document.getElementById('aov-e1').onchange=function(){ aovApply(1); };
+document.getElementById('aov-e2').onchange=function(){ aovApply(2); };
+['aov-t1','aov-t2'].forEach(function(id){ document.getElementById(id).oninput=function(){
+  document.getElementById(id+'v').textContent=this.value; aovApply(); }; });
+document.getElementById('aov-reset').onclick=function(){ if(selected!==null){ delete state.aov[selected]; saveAov(); rebuild(false); } };
+document.getElementById('pclose').onclick=function(){ if(selected!==null) setSel(null); else document.getElementById('panel').style.display='none'; };
+document.getElementById('pfn').onclick=function(){ document.getElementById('panel').classList.toggle('exp'); };
+
+function seg(id,key){ document.querySelectorAll('#'+id+' button').forEach(function(b){ b.onclick=function(){
+  document.querySelectorAll('#'+id+' button').forEach(function(x){x.classList.remove('on');}); b.classList.add('on');
+  state[key]=b.dataset.v; if(key==='color')updateLegend(); if(key==='mode')syncModeUI(); rebuild(false);
+};});}
+seg('seg-color','color');
+seg('seg-mode','mode');
+function syncModeUI(){ const cross=(state.mode==='cross');
+  document.getElementById('row-facePri').style.display=cross?'':'none';
+  document.getElementById('row-strad').style.display=cross?'none':'';
+  document.getElementById('row-spread').style.display=cross?'none':'';
+}
+function bindRange(id,key,fmt){ const el=document.getElementById(id), out=document.getElementById(id+'-v');
+  el.oninput=function(e){ state[key]=+e.target.value; if(out)out.textContent=(fmt?fmt(e.target.value):e.target.value); rebuild(false); }; }
+bindRange('strad','strad');
+bindRange('spread','spread');
+bindRange('facePri','facePri');
+bindRange('minGap','minGap');
+bindRange('tegSlack','tegSlack');
+document.getElementById('trussShow').onchange=function(e){state.trussShow=e.target.checked; rebuild(false);};
+document.getElementById('cordShow').onchange=function(e){state.cordShow=e.target.checked; rebuild(false);};
+document.getElementById('spacingShow').onchange=function(e){state.spacingShow=e.target.checked; rebuild(false);};
+document.getElementById('nodeDist').onchange=function(e){state.nodeDist=e.target.checked; rebuild(false);};
+document.getElementById('path').onchange=function(e){state.path=e.target.checked; rebuild(false);};
+document.getElementById('ground').onchange=function(e){state.ground=e.target.checked; rebuild(false);};
+document.getElementById('strings').onchange=function(e){state.strings=e.target.checked; rebuild(false);};
+document.getElementById('numbers').onchange=function(e){state.numbers=e.target.checked; rebuild(false);};
+document.getElementById('reset').onclick=function(){ frame(nodeMeshes.map(function(m){return m.position;})); };
+
+function exportCSV(){
+  function anchorInfo(g){
+    if(g.mode==='cross') return {mode:'cross', fixEdge:g.edge1, fixNA:g.n1A, fixFromA:g.a1FromA, fixFromB:g.a1FromB,
+      freeEdge:g.edge2, freeNA:g.n2A, freeFromA:g.a2FromA, freeFromB:g.a2FromB, sep:g.sep, posErr:g.posErr, faceDeg:g.faceDeg};
+    return {mode:'line', fixEdge:g.edgeName, fixNA:g.nodeA, fixFromA:g.alongFix, fixFromB:g.edgeLen-g.alongFix,
+      freeEdge:g.edgeName, freeNA:g.nodeA, freeFromA:g.alongFree, freeFromB:g.edgeLen-g.alongFree, sep:(g.alongFree-g.alongFix), posErr:'', faceDeg:''};
+  }
+  const head=['No','file','dateTime_HHMM','dir_deg','dir_label','dir_estimated','pitch','height_cm','height_estimated','rotation','mode',
+    'fixTri_edge','fixTri_nodeA','fixTri_fromA_mm','fixTri_fromB_mm','freeCir_edge','freeCir_nodeA','freeCir_fromA_mm','freeCir_fromB_mm','fixToFree_mm','posErr_mm','faceErr_deg',
+    'teg_edge','tilt_type','cut_len_m','fix_leg_m','free_leg_m','note','src_date','src_gps','src_dir'];
+  const rows=[head]; let grandCut=0;
+  for(let i=0;i<N;i++){ const d=P[i], g=lastGrid[i], teg=g.teg, ai=anchorInfo(g);
+    grandCut+=teg.total;
+    const tiltType=(Math.abs(d.p)>TILT_THRESH_DEG)?'tate':'yoko';
+    rows.push([i+1,d.f,d.t,d.d,d.dl,d.dEst?'yes':'no',d.p,d.h,d.hEst?'yes':'no',d.r,ai.mode,
+      ai.fixEdge,ai.fixNA,ai.fixFromA,ai.fixFromB,ai.freeEdge,ai.freeNA,ai.freeFromA,ai.freeFromB,ai.sep,ai.posErr,ai.faceDeg,
+      teg.edge,tiltType,(teg.total/100).toFixed(2),(teg.a/100).toFixed(2),(teg.b/100).toFixed(2),(d.n||'').replace(/\n/g,' '),d.st,d.sg,d.sd]); }
+  const sumRow=new Array(head.length).fill('');
+  sumRow[head.indexOf('teg_edge')]='合計'; sumRow[head.indexOf('cut_len_m')]=(grandCut/100).toFixed(2)+'m';
+  rows.push(sumRow);
+  const csv=rows.map(function(r){return r.map(function(c){const s=String(c); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',');}).join('\n');
+  const blob=new Blob([String.fromCharCode(0xFEFF)+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='opencampus-tegus-list.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+document.getElementById('csv').onclick=exportCSV;
+
+function exportPlanSVG(){
+  const mL=90, mT=70, mR=60, mB=60;
+  const sc=1400/TBW, cw=TBW*sc, ch=TBH*sc, tw=mL+cw+mR, th=mT+ch+mB;
+  const X=function(mm){return (mL+(mm-TMINX)*sc).toFixed(1);}, Y=function(mm){return (mT+(mm-TMINZ)*sc).toFixed(1);};
+  let g='<svg xmlns="http://www.w3.org/2000/svg" width="'+tw.toFixed(0)+'" height="'+th.toFixed(0)+'" viewBox="0 0 '+tw.toFixed(0)+' '+th.toFixed(0)+'" font-family="sans-serif">';
+  g+='<rect x="0" y="0" width="'+tw.toFixed(0)+'" height="'+th.toFixed(0)+'" fill="#ffffff"/>';
+  g+='<text x="'+mL+'" y="28" font-size="18" fill="#111">吊り平面図 ｜ 実測トラス 9点'+EDGES.length+'辺（うち推定2）・ 天井'+(CEIL_MM/1000).toFixed(1)+'m</text>';
+  g+='<text x="'+mL+'" y="46" font-size="12" fill="#666">単位mm ／ 灰線=トラス(実測) ／ 紫破線=推定の追加線 ／ △=固定・○=自在(番号) ／ 橙=同一線・紫破線=またぎ ／ 緑=接点間隔(mm)</text>';
+  EDGES.forEach(function(e){
+    const A=NODE[e[0]], B=NODE[e[1]], est=(e[3]==='estimated');
+    g+='<line x1="'+X(A[0])+'" y1="'+Y(A[1])+'" x2="'+X(B[0])+'" y2="'+Y(B[1])+'" stroke="'+(est?'#b87fe3':'#c7ccd6')+'" stroke-width="2"'+(est?' stroke-dasharray="6,4"':'')+'/>';
+    const mx=X((A[0]+B[0])/2), my=Y((A[1]+B[1])/2);
+    g+='<text x="'+mx+'" y="'+(+my-4).toFixed(1)+'" font-size="9" fill="'+(est?'#8a4fc7':'#999')+'" text-anchor="middle">'+e[2]+(est?'(推定)':'')+'</text>';
+  });
+  // 北方位（P3・P4側）
+  (function(){
+    const nl=Math.hypot(NORTH_MM[0],NORTH_MM[1])||1, nx=NORTH_MM[0]/nl, ny=NORTH_MM[1]/nl, ax=tw-46, ay=64, alen=26;
+    g+='<g transform="translate('+ax+','+ay+')"><line x1="0" y1="0" x2="'+(nx*alen).toFixed(1)+'" y2="'+(ny*alen).toFixed(1)+'" stroke="#111" stroke-width="1.5"/>';
+    g+='<circle cx="'+(nx*alen).toFixed(1)+'" cy="'+(ny*alen).toFixed(1)+'" r="3" fill="#111"/>';
+    g+='<text x="'+(nx*(alen+14)).toFixed(1)+'" y="'+(ny*(alen+14)+4).toFixed(1)+'" font-size="13" font-weight="bold" fill="#111" text-anchor="middle">N</text></g>';
+  })();
+  Object.keys(NODE).forEach(function(k){
+    const p=NODE[k]; g+='<circle cx="'+X(p[0])+'" cy="'+Y(p[1])+'" r="4.5" fill="#0ea5c4" stroke="#075e73" stroke-width="1.2"/>';
+    g+='<text x="'+(+X(p[0])+7).toFixed(1)+'" y="'+(+Y(p[1])-6).toFixed(1)+'" font-size="12" font-weight="bold" fill="#0f172a">'+k+'</text>';
+  });
+  const perEdge={};
+  const alongMM=function(ei,al){ const e=EDGES[ei],A=NODE[e[0]],B=NODE[e[1]],t=al/e[2]; return [A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t]; };
+  for(let i=0;i<N;i++){ const gg=lastGrid[i]; if(!gg) continue;
+    let e1,a1,e2,a2;
+    if(gg.mode==='cross'){ e1=gg.e1; a1=gg.a1FromA; e2=gg.e2; a2=gg.a2FromA; }
+    else { const half=state.strad/2; e1=gg.ei; a1=Math.max(0,gg.along-half); e2=gg.ei; a2=Math.min(gg.edgeLen,gg.along+half); }
+    const pf=alongMM(e1,a1), pr=alongMM(e2,a2);
+    (perEdge[e1]=perEdge[e1]||[]).push(a1); (perEdge[e2]=perEdge[e2]||[]).push(a2);
+    // △↔○ の接続（同一線=橙, またぐ=紫破線）
+    g+='<line x1="'+X(pf[0])+'" y1="'+Y(pf[1])+'" x2="'+X(pr[0])+'" y2="'+Y(pr[1])+'" stroke="'+(gg.mode==='cross'?'#b87fe3':'#e08a1e')+'" stroke-width="'+(gg.mode==='cross'?'1.4':'2.2')+'"'+(gg.mode==='cross'?' stroke-dasharray="5,3"':'')+'/>';
+    const xf=X(pf[0]), yf=Y(pf[1]);
+    g+='<polygon points="'+xf+','+(+yf-3.6).toFixed(1)+' '+(+xf-3.2).toFixed(1)+','+(+yf+2.6).toFixed(1)+' '+(+xf+3.2).toFixed(1)+','+(+yf+2.6).toFixed(1)+'" fill="#c0392b"/>';
+    g+='<circle cx="'+X(pr[0])+'" cy="'+Y(pr[1])+'" r="2.6" fill="#1d6fb8"/>';
+    const mid=[(pf[0]+pr[0])/2,(pf[1]+pr[1])/2];
+    g+='<text x="'+X(mid[0])+'" y="'+(+Y(mid[1])-7).toFixed(1)+'" font-size="9" fill="#111" text-anchor="middle">'+(i+1)+'</text>';
+  }
+  // 各辺の接点間隔ラベル（緑）
+  Object.keys(perEdge).forEach(function(k){
+    const ei=+k, e=EDGES[ei], marks=[0].concat(perEdge[k].slice()).concat([e[2]]).sort(function(a,b){return a-b;});
+    for(let q=1;q<marks.length;q++){ const d=Math.round(marks[q]-marks[q-1]); if(d<1) continue;
+      const pm=alongMM(ei,(marks[q]+marks[q-1])/2);
+      g+='<text x="'+X(pm[0])+'" y="'+(+Y(pm[1])+13).toFixed(1)+'" font-size="8" fill="#2a8a6a" text-anchor="middle">'+d+'</text>';
+    }
+  });
+  const sb=(1000*sc).toFixed(1);
+  g+='<g transform="translate('+mL+','+(mT+ch+34).toFixed(0)+')"><line x1="0" y1="0" x2="'+sb+'" y2="0" stroke="#111" stroke-width="1.5"/><line x1="0" y1="-4" x2="0" y2="4" stroke="#111"/><line x1="'+sb+'" y1="-4" x2="'+sb+'" y2="4" stroke="#111"/><text x="'+(sb/2).toFixed(1)+'" y="15" font-size="11" fill="#111" text-anchor="middle">1000mm</text></g>';
+  g+='</svg>';
+  const blob=new Blob([g],{type:'image/svg+xml;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='opencampus-plan.svg'; document.body.appendChild(a); a.click(); a.remove();
+}
+document.getElementById('plansvg').onclick=exportPlanSVG;
+
+addEventListener('resize',function(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+renderer.setSize(innerWidth,innerHeight);
+syncModeUI(); updateLegend(); build();
+(function loop(){ requestAnimationFrame(loop); controls.update();
+  for(let i=0;i<labelSprites.length;i++){ const sp=labelSprites[i], d=camera.position.distanceTo(sp.position), f=d*LABEL_K; sp.scale.set(sp.userData.bw*f, sp.userData.bh*f, 1); }
+  renderer.render(scene,camera); })();
+</script>
+</body>
+</html>
